@@ -1,0 +1,33 @@
+name: go test
+
+on:
+  push:
+
+env:
+  GOPROXY: https://goproxy.githubapp.com/mod,https://proxy.golang.org,direct
+  GOPRIVATE: ''
+  GONOPROXY: ''
+  GONOSUMDB: github.com/github/*
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go: ["1.18", "1.19"]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Authenticate with goproxy.
+        run: |
+          echo "machine goproxy.githubapp.com login nobody password ${{ secrets.CONTAINER_BUILDER_TOKEN }}" >> $HOME/.netrc
+      - name: Vendor modules for later steps.
+        run: |
+          go mod vendor
+      - name: go test
+        run: go test -race ./...
+
