@@ -1,27 +1,33 @@
 //go:build integration
-// +build integration
 
 package integration
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"testing"
 )
 
+var localRepo, remoteRepo string
+
 func TestMain(m *testing.M) {
-	if err := os.Chdir(".."); err != nil {
-		log.Fatal("unable to chdir to project base directory", err)
+
+	var err error
+
+	// set up a folder that will be used as a "local" Git repo
+	localRepo, err = os.MkdirTemp("", "local")
+	if err != nil {
+		log.Fatal("Unable to create the local repository directory", err)
 	}
 
-	// Setup a folder that will be used as Git repo
-	if err := exec.Command("mkdir", "/tmp/local").Run(); err != nil {
-		log.Fatal(err)
+	// set up a folder that will be used as a "remote" Git repo
+	remoteRepo, err = os.MkdirTemp("", "remote")
+	if err != nil {
+		log.Fatal("Unable to create the remote repository directory", err)
 	}
 
-	if err := os.Chdir("/tmp/local"); err != nil {
+	if err := os.Chdir(localRepo); err != nil {
 		log.Fatal("unable to chdir new local Git Repo", err)
 	}
 
@@ -29,8 +35,16 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
+	// Configure our local repo
+	if err := exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run(); err != nil {
+		log.Fatal(err)
+	}
+	if err := exec.Command("git", "config", "user.name", "spokes-receive-pack").Run(); err != nil {
+		log.Fatal(err)
+	}
+
 	// add some content to our repo and commit it
-	err := os.WriteFile("README.md", []byte("A simple README.md file"), 0644)
+	err = os.WriteFile("README.md", []byte("A simple README.md file"), 0644)
 	if err != nil {
 		log.Fatal("unable to create a README.md file in the Git repo", err)
 	}
@@ -41,17 +55,12 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
-	// setup a remote (assuming it's going to be localted in /tmp/remote
-	if err := exec.Command("git", "remote", "add", "r", "/tmp/remote").Run(); err != nil {
+	// configure the remote
+	if err := exec.Command("git", "remote", "add", "r", remoteRepo).Run(); err != nil {
 		log.Fatal(err)
 	}
 
-	// Setup a folder that will be used as Git remote of our /tmp/local repo
-	if err := exec.Command("mkdir", "/tmp/remote").Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Chdir("/tmp/remote"); err != nil {
+	if err := os.Chdir(remoteRepo); err != nil {
 		log.Fatal("unable to chdir to project base directory", err)
 	}
 
@@ -62,21 +71,23 @@ func TestMain(m *testing.M) {
 	r := m.Run()
 
 	// Clean the environment before exiting
-	os.RemoveAll("/tmp/remote")
-	os.RemoveAll("/tmp/local")
+	if err := os.RemoveAll(remoteRepo); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := os.RemoveAll(localRepo); err != nil {
+		log.Fatal(err)
+	}
+
 	os.Exit(r)
 }
 
 func TestSuccessfulPush(t *testing.T) {
-	if err := os.Chdir("/tmp/local"); err != nil {
+	if err := os.Chdir(localRepo); err != nil {
 		t.Fatal("unable to chdir to our local Git repo", err)
 	}
 
-	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack", "r", "master")
-
-	output, err := cmd.CombinedOutput()
-	fmt.Println("Results:" + string(output))
-	if err != nil {
-		t.Fatal(string(output))
+	if err := exec.Command("git", "push", "--receive-pack=spokes-receive-pack", "r", "master").Run(); err != nil {
+		t.Fatal(err)
 	}
 }
