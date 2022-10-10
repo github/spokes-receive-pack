@@ -24,6 +24,8 @@ jobs:
       - name: Vendor modules for later steps.
         run: |
           go mod vendor
-      - name: go test
-        run: go test -race ./...
+      - name: go unit test
+        run: make test
+      - name: go integration test
+        run: make test-integration
 
