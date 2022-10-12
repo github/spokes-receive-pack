@@ -6,7 +6,7 @@ We don't expect this to be generally useful outside of GitHub's service backend,
 
 ## License 
 
-This project is licensed under the terms of the GPL v2 open source license. Please refer to [LICENSE.md](./LICENSE.md) for the full terms.
+This project is licensed under the terms of the GPL v2 open source license. Please refer to [LICENSE](./LICENSE) for the full terms.
 
 ## Maintainers 
 
