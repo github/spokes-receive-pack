@@ -1,0 +1,28 @@
+---
+version: 1
+ownership:
+- name: spokes-receive-pack
+  long_name: spokes-receive-pack
+  description: spokes-receive-pack is a replacement for git-receive-pack containing
+    only the functionality GitHub needs to process an incoming pack.
+  kind: code
+  repo: https://github.com/github/spokes-receive-pack
+  qos: experimental
+  team: github/git-access
+  team_slack: git-systems
+  ops_slack: git-systems-alerts
+  maintainer: spraints
+  exec_sponsor: prplr
+  product_manager: vtbassmatt
+  dependencies:
+  - spokesd
+  sev1:
+    pagerduty: https://github.pagerduty.com/escalation_policies#PTID6HO
+    tta: 20m
+  sev2:
+    issue: https://github.com/github/git-systems-alerts/issues
+    tta: 1 business day
+  sev3:
+    slack: git-systems-alerts
+    tta: 3 business days
+  tier: 1
