@@ -3,91 +3,74 @@
 package integration
 
 import (
-	"log"
+	"fmt"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"os"
 	"os/exec"
 	"testing"
 )
 
-var localRepo, remoteRepo string
-
-func TestMain(m *testing.M) {
-
-	var err error
-
-	// set up a folder that will be used as a "local" Git repo
-	localRepo, err = os.MkdirTemp("", "local")
-	if err != nil {
-		log.Fatal("Unable to create the local repository directory", err)
-	}
-
-	// set up a folder that will be used as a "remote" Git repo
-	remoteRepo, err = os.MkdirTemp("", "remote")
-	if err != nil {
-		log.Fatal("Unable to create the remote repository directory", err)
-	}
-
-	if err := os.Chdir(localRepo); err != nil {
-		log.Fatal("unable to chdir new local Git Repo", err)
-	}
-
-	if err := exec.Command("git", "init").Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	// Configure our local repo
-	if err := exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run(); err != nil {
-		log.Fatal(err)
-	}
-	if err := exec.Command("git", "config", "user.name", "spokes-receive-pack").Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	// add some content to our repo and commit it
-	err = os.WriteFile("README.md", []byte("A simple README.md file"), 0644)
-	if err != nil {
-		log.Fatal("unable to create a README.md file in the Git repo", err)
-	}
-	if err := exec.Command("git", "add", ".").Run(); err != nil {
-		log.Fatal(err)
-	}
-	if err := exec.Command("git", "commit", "--message", "First commit").Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	// configure the remote
-	if err := exec.Command("git", "remote", "add", "r", remoteRepo).Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.Chdir(remoteRepo); err != nil {
-		log.Fatal("unable to chdir to project base directory", err)
-	}
-
-	if err := exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run(); err != nil {
-		log.Fatal(err)
-	}
-
-	r := m.Run()
-
-	// Clean the environment before exiting
-	if err := os.RemoveAll(remoteRepo); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := os.RemoveAll(localRepo); err != nil {
-		log.Fatal(err)
-	}
-
-	os.Exit(r)
+type SpokesReceivePackTestSuite struct {
+	suite.Suite
+	localRepo, remoteRepo string
 }
 
-func TestSuccessfulPush(t *testing.T) {
-	if err := os.Chdir(localRepo); err != nil {
-		t.Fatal("unable to chdir to our local Git repo", err)
-	}
+func (suite *SpokesReceivePackTestSuite) SetupTest() {
+	var err error
+	req := require.New(suite.T())
 
-	if err := exec.Command("git", "push", "--receive-pack=spokes-receive-pack", "r", "master").Run(); err != nil {
-		t.Fatal(err)
-	}
+	// set up a folder that will be used as a "local" Git repo
+	localRepo, err := os.MkdirTemp("", "local")
+	req.NoError(err, fmt.Sprintf("unable to create the local Git repo: %s", err))
+
+	// set up a folder that will be used as a "remote" Git repo
+	remoteRepo, err := os.MkdirTemp("", "remote")
+	req.NoError(err, "unable to create the remote repository directory")
+
+	req.NoError(os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	// init and config the local Git repo
+	req.NoError(exec.Command("git", "init").Run())
+	req.NoError(exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	req.NoError(exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
+
+	// add some content to our repo and commit it
+	req.NoError(
+		os.WriteFile("README.md", []byte("A simple README.md file"), 0644),
+		"unable to create a README.md file in the Git repo")
+	req.NoError(exec.Command("git", "add", ".").Run())
+	req.NoError(exec.Command("git", "commit", "--message", "First commit").Run())
+
+	// configure the remote
+	req.NoError(exec.Command("git", "remote", "add", "r", remoteRepo).Run())
+	req.NoError(os.Chdir(remoteRepo), "unable to chdir to project base directory")
+
+	req.NoError(exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run())
+
+	// store the state
+	suite.localRepo = localRepo
+	suite.remoteRepo = remoteRepo
+}
+
+func (suite *SpokesReceivePackTestSuite) TearDownTest() {
+	require := require.New(suite.T())
+
+	// Clean the environment before exiting
+	require.NoError(os.RemoveAll(suite.remoteRepo))
+	require.NoError(os.RemoveAll(suite.localRepo))
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSuccessfulPush() {
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(
+		suite.T(),
+		exec.Command(
+			"git", "push", "--receive-pack=spokes-receive-pack", "r", "master").Run(),
+		"unexpected error running the push with the custom spokes-receive-pack program")
+}
+
+func TestSpokesReceivePackTestSuite(t *testing.T) {
+	suite.Run(t, new(SpokesReceivePackTestSuite))
 }
