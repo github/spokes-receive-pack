@@ -1,0 +1,11 @@
+/.cache
+/.idea
+/bin
+/build
+/man
+/tmp
+/test/tmp
+*.swp
+**/testdata/**/gitk.cache
+Brewfile.lock.json
+
