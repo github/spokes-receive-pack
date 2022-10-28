@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/github/spokes-receive-pack/internal/receivepack"
+	"github.com/github/spokes-receive-pack/internal/spokes"
 )
 
 const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
@@ -26,7 +27,10 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
 		}
 	} else {
-		// We need to run here our custom impl
+		rp := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args)
+		if err := rp.Execute(ctx); err != nil {
+			return fmt.Errorf("unexpected error running spokes receive pack: %w", err)
+		}
 	}
 
 	return nil
