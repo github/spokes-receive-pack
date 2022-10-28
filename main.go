@@ -9,6 +9,8 @@ import (
 	"github.com/github/spokes-receive-pack/internal/receivepack"
 )
 
+const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
+
 func main() {
 	if err := mainImpl(os.Stdin, os.Stdout, os.Stderr, os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -18,10 +20,13 @@ func main() {
 
 func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	ctx := context.Background()
-	rp := receivepack.NewReceivePack(stdin, stdout, stderr, args)
-
-	if err := rp.Execute(ctx); err != nil {
-		return fmt.Errorf("unexpected error running receive pack: %w", err)
+	if os.Getenv(GitSockstatVarSpokesQuarantine) != "true" {
+		rp := receivepack.NewReceivePack(stdin, stdout, stderr, args)
+		if err := rp.Execute(ctx); err != nil {
+			return fmt.Errorf("unexpected error running receive pack: %w", err)
+		}
+	} else {
+		// We need to run here our custom impl
 	}
 
 	return nil
