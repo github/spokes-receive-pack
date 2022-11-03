@@ -29,7 +29,7 @@ type SpokesReceivePack struct {
 func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string) *SpokesReceivePack {
 	return &SpokesReceivePack{
 		input:  input,
-		output: output,
+		output: bufio.NewWriter(output),
 		err:    err,
 		args:   args,
 	}
