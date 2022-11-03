@@ -19,19 +19,19 @@ const (
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
-	input  io.Reader
-	output io.Writer
-	err    io.Writer
-	args   []string
+	input    io.Reader
+	output   io.Writer
+	err      io.Writer
+	repoPath string
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string) *SpokesReceivePack {
+func NewSpokesReceivePack(input io.Reader, output, err io.Writer, repoPath string) *SpokesReceivePack {
 	return &SpokesReceivePack{
-		input:  input,
-		output: bufio.NewWriter(output),
-		err:    err,
-		args:   args,
+		input:    input,
+		output:   bufio.NewWriter(output),
+		err:      err,
+		repoPath: repoPath,
 	}
 }
 
@@ -39,8 +39,8 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string)
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
 func (r *SpokesReceivePack) Execute(ctx context.Context) error {
-	if err := os.Chdir(r.args[0]); err != nil {
-		return fmt.Errorf("unable to enter repo at location: %s", r.args[0])
+	if err := os.Chdir(r.repoPath); err != nil {
+		return fmt.Errorf("unable to enter repo at location: %s", r.repoPath)
 	}
 
 	// Reference discovery phase

@@ -33,7 +33,7 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
 		}
 	} else {
-		rp := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args)
+		rp := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args[0])
 		if err := rp.Execute(ctx); err != nil {
 			return fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 		}
