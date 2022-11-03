@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -32,7 +31,7 @@ func TestPipelineFirstStageFailsToStart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -50,7 +49,7 @@ func TestPipelineSecondStageFailsToStart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -68,7 +67,7 @@ func TestPipelineSingleCommandOutput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -84,7 +83,7 @@ func TestPipelineSingleCommandWithStdout(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -101,7 +100,7 @@ func TestNontrivialPipeline(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -121,7 +120,7 @@ func TestPipelineReadFromSlowly(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -133,7 +132,7 @@ func TestPipelineReadFromSlowly(t *testing.T) {
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		var err error
-		buf, err = ioutil.ReadAll(r)
+		buf, err = io.ReadAll(r)
 		readErr <- err
 	}()
 
@@ -143,7 +142,7 @@ func TestPipelineReadFromSlowly(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	// It's not super-intuitive, but `w` has to be closed here so that
-	// the `ioutil.ReadAll()` call above knows that it's done:
+	// the `io.ReadAll()` call above knows that it's done:
 	_ = w.Close()
 
 	assert.NoError(t, <-readErr)
@@ -155,7 +154,7 @@ func TestPipelineReadFromSlowly2(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -188,7 +187,7 @@ func TestPipelineReadFromSlowly2(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 	// It's not super-intuitive, but `w` has to be closed here so that
-	// the `ioutil.ReadAll()` call above knows that it's done:
+	// the `io.ReadAll()` call above knows that it's done:
 	_ = w.Close()
 
 	assert.NoError(t, <-readErr)
@@ -199,7 +198,7 @@ func TestPipelineSingleGitCommandWithOutput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -214,7 +213,7 @@ func TestPipelineTwoCommandsPiping(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -233,7 +232,7 @@ func TestPipelineDir(t *testing.T) {
 
 	wdir, err := os.Getwd()
 	require.NoError(t, err)
-	dir, err := ioutil.TempDir(wdir, "pipeline-test-")
+	dir, err := os.MkdirTemp(wdir, "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -250,7 +249,7 @@ func TestPipelineExit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -266,7 +265,7 @@ func TestPipelineStderr(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -285,7 +284,7 @@ func TestPipelineStderr(t *testing.T) {
 
 func TestPipelineInterrupted(t *testing.T) {
 	t.Parallel()
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -306,7 +305,7 @@ func TestPipelineInterrupted(t *testing.T) {
 
 func TestPipelineCanceled(t *testing.T) {
 	t.Parallel()
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -332,7 +331,7 @@ func TestPipelineCanceled(t *testing.T) {
 // buffer.
 func TestLittleEPIPE(t *testing.T) {
 	t.Parallel()
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -354,7 +353,7 @@ func TestLittleEPIPE(t *testing.T) {
 // OS-level pipe buffer.
 func TestBigEPIPE(t *testing.T) {
 	t.Parallel()
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -376,7 +375,7 @@ func TestBigEPIPE(t *testing.T) {
 // OS-level pipe buffer.
 func TestIgnoredSIGPIPE(t *testing.T) {
 	t.Parallel()
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -397,7 +396,7 @@ func TestFunction(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -407,7 +406,7 @@ func TestFunction(t *testing.T) {
 		pipe.Function(
 			"farewell",
 			func(_ context.Context, _ pipe.Env, stdin io.Reader, stdout io.Writer) error {
-				buf, err := ioutil.ReadAll(stdin)
+				buf, err := io.ReadAll(stdin)
 				if err != nil {
 					return err
 				}
@@ -429,7 +428,7 @@ func TestPipelineWithFunction(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -439,7 +438,7 @@ func TestPipelineWithFunction(t *testing.T) {
 		pipe.Function(
 			"farewell",
 			func(_ context.Context, _ pipe.Env, stdin io.Reader, stdout io.Writer) error {
-				buf, err := ioutil.ReadAll(stdin)
+				buf, err := io.ReadAll(stdin)
 				if err != nil {
 					return err
 				}
@@ -469,7 +468,7 @@ func (s ErrorStartingStage) Name() string {
 func (s ErrorStartingStage) Start(
 	ctx context.Context, env pipe.Env, stdin io.ReadCloser,
 ) (io.ReadCloser, error) {
-	return ioutil.NopCloser(&bytes.Buffer{}), s.err
+	return io.NopCloser(&bytes.Buffer{}), s.err
 }
 
 func (s ErrorStartingStage) Wait() error {
@@ -495,7 +494,7 @@ func TestPipelineWithLinewiseFunction(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -579,7 +578,7 @@ func TestScannerAlwaysFlushes(t *testing.T) {
 			"compute-length",
 			func(_ context.Context, _ pipe.Env, stdin io.Reader, _ io.Writer) error {
 				var err error
-				length, err = io.Copy(ioutil.Discard, stdin)
+				length, err = io.Copy(io.Discard, stdin)
 				return err
 			},
 		),
@@ -622,7 +621,7 @@ func TestScannerFinishEarly(t *testing.T) {
 			"compute-length",
 			func(_ context.Context, _ pipe.Env, stdin io.Reader, _ io.Writer) error {
 				var err error
-				length, err = io.Copy(ioutil.Discard, stdin)
+				length, err = io.Copy(io.Discard, stdin)
 				return err
 			},
 		),
@@ -639,7 +638,7 @@ func TestPrintln(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -655,7 +654,7 @@ func TestPrintf(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
@@ -670,7 +669,7 @@ func TestPrintf(t *testing.T) {
 func BenchmarkSingleProgram(b *testing.B) {
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 
@@ -686,7 +685,7 @@ func BenchmarkSingleProgram(b *testing.B) {
 func BenchmarkTenPrograms(b *testing.B) {
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 
@@ -714,7 +713,7 @@ func BenchmarkTenPrograms(b *testing.B) {
 func BenchmarkTenFunctions(b *testing.B) {
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 
@@ -747,7 +746,7 @@ func BenchmarkTenFunctions(b *testing.B) {
 func BenchmarkTenMixedStages(b *testing.B) {
 	ctx := context.Background()
 
-	dir, err := ioutil.TempDir("", "pipeline-test-")
+	dir, err := os.MkdirTemp("", "pipeline-test-")
 	require.NoError(b, err)
 	defer os.RemoveAll(dir)
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os/exec"
 	"sync/atomic"
 
@@ -204,7 +203,7 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	if p.stdin != nil {
 		// We don't want the first stage to actually close this, and
 		// it's not even an `io.ReadCloser`, so fake it:
-		nextStdin = ioutil.NopCloser(p.stdin)
+		nextStdin = io.NopCloser(p.stdin)
 	}
 
 	for i, s := range p.stages {
