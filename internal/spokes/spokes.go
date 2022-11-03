@@ -19,18 +19,18 @@ const (
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
-	stdin  io.Reader
-	stdout io.Writer
-	stderr io.Writer
+	input  io.Reader
+	output io.Writer
+	err    io.Writer
 	args   []string
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(stdin io.Reader, stdout, stderr io.Writer, args []string) *SpokesReceivePack {
+func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string) *SpokesReceivePack {
 	return &SpokesReceivePack{
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
+		input:  input,
+		output: output,
+		err:    err,
 		args:   args,
 	}
 }
@@ -56,7 +56,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
 	capsOutput := false
-	p := pipe.New(".", pipe.WithStdout(r.stdout))
+	p := pipe.New(".", pipe.WithStdout(r.output))
 	p.Add(
 		pipe.GitCommand("for-each-ref", "--format=%(objectname) %(refname)"),
 		pipe.LinewiseFunction(
@@ -82,25 +82,25 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	if !capsOutput {
-		if _, err := fmt.Fprintf(r.stdout, "%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
+		if _, err := fmt.Fprintf(r.output, "%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
 
-	fmt.Fprintf(r.stdout, "0000")
+	fmt.Fprintf(r.output, "0000")
 
 	return nil
 }
 
-// writePacket writes `data` to the `r.stdout` as a pkt-line.
+// writePacket writes `data` to the `r.output` as a pkt-line.
 func (r *SpokesReceivePack) writePacketLine(data []byte) error {
 	if len(data) > maxPacketDataLength {
 		return fmt.Errorf("data exceeds maximum pkt-line length: %d", len(data))
 	}
-	if _, err := fmt.Fprintf(r.stdout, "%04x", 4+len(data)); err != nil {
+	if _, err := fmt.Fprintf(r.output, "%04x", 4+len(data)); err != nil {
 		return fmt.Errorf("writing packet length: %w", err)
 	}
-	if _, err := r.stdout.Write(data); err != nil {
+	if _, err := r.output.Write(data); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil
