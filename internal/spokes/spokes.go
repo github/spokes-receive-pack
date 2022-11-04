@@ -5,9 +5,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/github/spokes-receive-pack/internal/pipe"
 	"io"
 	"os"
+
+	"github.com/github/go-pipe/pipe"
 )
 
 const (
@@ -56,9 +57,9 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
 	capsOutput := false
-	p := pipe.New(".", pipe.WithStdout(r.output))
+	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
 	p.Add(
-		pipe.GitCommand("for-each-ref", "--format=%(objectname) %(refname)"),
+		pipe.Command("git", "for-each-ref", "--format=%(objectname) %(refname)"),
 		pipe.LinewiseFunction(
 			"print-advertisement",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
