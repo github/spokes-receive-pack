@@ -87,7 +87,9 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		}
 	}
 
-	fmt.Fprintf(r.output, "0000")
+	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
+		return fmt.Errorf("writing flush packet: %w", err)
+	}
 
 	return nil
 }
