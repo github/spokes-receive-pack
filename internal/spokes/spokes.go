@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/github/go-pipe/pipe"
+	"github.com/github/spokes-receive-pack/internal/config"
 )
 
 const (
@@ -56,6 +58,11 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
+	config, err := config.GetConfig(r.repoPath, "receive.hiderefs")
+	if err != nil {
+		return err
+	}
+
 	capsOutput := false
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
 	p.Add(
@@ -63,6 +70,10 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		pipe.LinewiseFunction(
 			"print-advertisement",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
+				// Ignore the current line if it is a hidden ref
+				if isHiddenRef(line, config.Entries) {
+					return nil
+				}
 				if !capsOutput {
 					if err := r.writePacketf("%s\x00%s\n", line, capabilities); err != nil {
 						return fmt.Errorf("writing capability packet: %w", err)
@@ -93,6 +104,19 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	return nil
+}
+
+// isHiddenRef determines if the line passed as the first argument belongs to the list of
+// potential references that we don't want to advertise
+// This method assumes the config entries passed as a second argument are the ones in the `receive.hiderefs` section
+func isHiddenRef(line []byte, entries []config.ConfigEntry) bool {
+	l := string(line)
+	for _, entry := range entries {
+		if strings.Contains(l, entry.Value) {
+			return true
+		}
+	}
+	return false
 }
 
 // writePacket writes `data` to the `r.output` as a pkt-line.
