@@ -166,7 +166,7 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 	}
 
 	if !strings.HasPrefix(alternates, filepath.Dir(r.repoPath)) {
-		return "", fmt.Errorf("alternates and arepo are not in the same parent directory")
+		return "", fmt.Errorf("alternates and repo are not in the same parent directory")
 	}
 
 	return alternates, nil
