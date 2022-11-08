@@ -76,6 +76,17 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", err.Error())
 		}
+	} else {
+		// We have successfully processed the pack-files, let's check their connectivity
+		if err := r.performCheckConnectivity(ctx, commands); err != nil {
+			for _, c := range commands {
+				if err := r.performCheckConnectivityOnObject(ctx, c.newOID); err != nil {
+					// Some references have missing objects, let's check them one by one to determine
+					// the ones which are actually failing
+					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+				}
+			}
+		}
 	}
 
 	panic("Not complete yet!")
@@ -396,6 +407,83 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 	}
 
 	return eg.Wait()
+}
+
+// performCheckConnectivity checks that the "new" oid provided in `commands` are
+// closed under reachability, stopping the traversal at any objects
+// reachable from the pre-existing reference values.
+func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", os.DevNull, err)
+	}
+	defer func() {
+		_ = devNull.Close()
+	}()
+
+	cmd := exec.CommandContext(
+		ctx,
+		"git",
+		"rev-list",
+		"--objects",
+		"--no-object-names",
+		"--stdin",
+		"--not",
+		"--all",
+		"--alternate-refs",
+	)
+	cmd.Stderr = devNull
+
+	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
+	p.Add(
+		pipe.Function(
+			"write-new-values",
+			func(ctx context.Context, _ pipe.Env, input io.Reader, output io.Writer) error {
+				w := bufio.NewWriter(output)
+
+				for _, c := range commands {
+					if c.newOID == nullSHA1OID || c.newOID == nullSHA256OID {
+						continue
+					}
+					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
+						return fmt.Errorf("writing to 'rev-list' input: %w", err)
+					}
+				}
+
+				if err := w.Flush(); err != nil {
+					return fmt.Errorf("flushing stdin to 'rev-list': %w", err)
+				}
+
+				return nil
+			},
+		),
+		pipe.CommandStage("rev-list", cmd),
+	)
+
+	if err := p.Run(ctx); err != nil {
+		return fmt.Errorf("running 'rev-list': %w", err)
+	}
+
+	return nil
+}
+
+func (r *SpokesReceivePack) performCheckConnectivityOnObject(_ context.Context, oid string) error {
+	cmd := exec.Command(
+		"git",
+		"rev-list",
+		"--objects",
+		"--no-object-names",
+		"--not",
+		"--all",
+		"--alternate-refs",
+		oid,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
+	}
+
+	return nil
 }
 
 // includeNonDeletes returns true iff `commands` includes any
