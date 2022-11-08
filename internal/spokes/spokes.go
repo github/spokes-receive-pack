@@ -69,6 +69,14 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		return nil
 	}
 
+	// Now that we have all the commands sent by the client side, we are ready to process them and read the
+	// corresponding packfiles
+	if err := r.readPack(ctx, commands); err != nil {
+		for i := range commands {
+			commands[i].err = fmt.Sprintf("error processing packfiles: %s", err.Error())
+		}
+	}
+
 	panic("Not complete yet!")
 }
 
@@ -238,6 +246,7 @@ type command struct {
 	refname string
 	oldOID  string
 	newOID  string
+	err     string
 }
 
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
