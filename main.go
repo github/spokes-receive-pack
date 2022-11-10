@@ -13,7 +13,13 @@ import (
 const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
 
 func main() {
-	if err := mainImpl(os.Stdin, os.Stdout, os.Stderr, os.Args[1:]); err != nil {
+	args := os.Args[1:]
+	if len(args) > 1 {
+		fmt.Fprintf(os.Stderr, "unexpected number (%d) of arguments: only one argument should be passed", len(args))
+		os.Exit(1)
+	}
+
+	if err := mainImpl(os.Stdin, os.Stdout, os.Stderr, args); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -27,7 +33,7 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
 		}
 	} else {
-		rp := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args)
+		rp := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args[0])
 		if err := rp.Execute(ctx); err != nil {
 			return fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 		}

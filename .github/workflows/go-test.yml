@@ -20,7 +20,7 @@ jobs:
           go-version: "1.19"
       - name: Authenticate with goproxy.
         run: |
-          echo "machine goproxy.githubapp.com login nobody password ${{ secrets.CONTAINER_BUILDER_TOKEN }}" >> $HOME/.netrc
+          echo "machine goproxy.githubapp.com login nobody password ${{ secrets.GOPROXY_TOKEN }}" >> $HOME/.netrc
       - name: Vendor modules for later steps.
         run: |
           go mod vendor
