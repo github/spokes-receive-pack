@@ -144,7 +144,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			}
 		}
 	} else {
-		if _, err := fmt.Fprintf(r.output, "%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
+		if err := r.writePacketf("%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
