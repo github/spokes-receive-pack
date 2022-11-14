@@ -327,11 +327,10 @@ func (r *SpokesReceivePack) readPacket() ([]byte, error) {
 	return data, nil
 }
 
-// readPack reads a packfile from `r.input` (if one is needed) and pipes it
-// into `git index-pack`.
-//
+// readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-// If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory withing the
+// 
+// If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
 // current Git repository with a  default name determined from the pack content
 func (r *SpokesReceivePack) readPack(_ context.Context, commands []command) error {
 	// We only get a pack if there are non-deletes.
