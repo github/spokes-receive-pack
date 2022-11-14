@@ -333,14 +333,15 @@ func (r *SpokesReceivePack) readPacket() ([]byte, error) {
 //
 // If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
 // current Git repository with a  default name determined from the pack content
-func (r *SpokesReceivePack) readPack(_ context.Context, commands []command) error {
+func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
 	}
 
 	// Index-pack will read directly from our input!
-	cmd := exec.Command(
+	cmd := exec.CommandContext(
+		ctx,
 		"git",
 		"index-pack",
 		"--fix-thin",
