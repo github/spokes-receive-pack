@@ -372,7 +372,7 @@ func (r *SpokesReceivePack) readPack(_ context.Context, commands []command) erro
 				_ = stderr.Close()
 			}()
 			for {
-				var buf [1024]byte
+				var buf [999]byte
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
 					if err := r.writePacketf("\x02%s", buf[:n]); err != nil {
