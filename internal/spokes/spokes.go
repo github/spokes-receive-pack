@@ -7,19 +7,23 @@ import (
 	"fmt"
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	capabilities = "report-status delete-refs side-band-64k ofs-delta"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
-	nullOID             = "0000000000000000000000000000000000000000"
+	nullSHA1OID         = "0000000000000000000000000000000000000000"
+	nullSHA256OID       = "000000000000000000000000000000000000000000000000000000000000"
 )
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
@@ -64,6 +68,14 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	}
 	if len(commands) == 0 {
 		return nil
+	}
+
+	// Now that we have all the commands sent by the client side, we are ready to process them and read the
+	// corresponding packfiles
+	if err := r.readPack(ctx, commands); err != nil {
+		for i := range commands {
+			commands[i].err = fmt.Sprintf("error processing packfiles: %s", err.Error())
+		}
 	}
 
 	panic("Not complete yet!")
@@ -144,7 +156,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			}
 		}
 	} else {
-		if err := r.writePacketf("%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
+		if err := r.writePacketf("%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -235,6 +247,7 @@ type command struct {
 	refname string
 	oldOID  string
 	newOID  string
+	err     string
 }
 
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
@@ -313,4 +326,85 @@ func (r *SpokesReceivePack) readPacket() ([]byte, error) {
 		return nil, fmt.Errorf("reading packet data: %w", err)
 	}
 	return data, nil
+}
+
+// readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
+// Report errors to the error sideband in `w`.
+//
+// If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
+// current Git repository with a  default name determined from the pack content
+func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) error {
+	// We only get a pack if there are non-deletes.
+	if !includeNonDeletes(commands) {
+		return nil
+	}
+
+	// Index-pack will read directly from our input!
+	cmd := exec.CommandContext(
+		ctx,
+		"git",
+		"index-pack",
+		"--fix-thin",
+		"--stdin",
+		"-v",
+	)
+
+	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
+		if err := os.Mkdir(quarantine, 0700); err != nil {
+			return err
+		}
+		file := fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano())
+		cmd.Args = append(cmd.Args, filepath.Join(quarantine, file))
+	}
+
+	// We want to discard stdout but forward stderr to `w` in a
+	// sideband:
+	cmd.Stdin = r.input
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("creating pipe for 'index-pack' stderr: %w", err)
+	}
+
+	var eg errgroup.Group
+
+	eg.Go(
+		func() error {
+			defer func() {
+				_ = stderr.Close()
+			}()
+			for {
+				var buf [999]byte
+				n, err := stderr.Read(buf[:])
+				if n != 0 {
+					if err := r.writePacketf("\x02%s", buf[:n]); err != nil {
+						return fmt.Errorf("writing to error sideband: %w", err)
+					}
+				}
+				if err != nil {
+					if err == io.EOF {
+						return nil
+					}
+					return fmt.Errorf("reading 'index-pack' stderr: %w", err)
+				}
+			}
+		},
+	)
+
+	if err := cmd.Run(); err != nil {
+		_ = eg.Wait()
+		return fmt.Errorf("starting 'index-pack': %w", err)
+	}
+
+	return eg.Wait()
+}
+
+// includeNonDeletes returns true iff `commands` includes any
+// non-delete commands.
+func includeNonDeletes(commands []command) bool {
+	for _, c := range commands {
+		if c.newOID != nullSHA1OID && c.newOID != nullSHA256OID {
+			return true
+		}
+	}
+	return false
 }
