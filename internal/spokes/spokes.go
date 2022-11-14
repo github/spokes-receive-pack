@@ -237,7 +237,7 @@ type command struct {
 	newOID  string
 }
 
-var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40}) ([0-9a-f]{40}) (.+)`)
+var validReferenceName = regexp.MustCompile(`^([0-9a-f]{64}) ([0-9a-f]{64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
 func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, error) {
