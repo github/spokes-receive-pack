@@ -22,7 +22,8 @@ const (
 	capabilities = "report-status delete-refs side-band-64k ofs-delta"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
-	nullOID             = "0000000000000000000000000000000000000000"
+	nullSHA1OID         = "0000000000000000000000000000000000000000"
+	nullSHA256OID       = "000000000000000000000000000000000000000000000000000000000000"
 )
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
@@ -155,7 +156,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			}
 		}
 	} else {
-		if err := r.writePacketf("%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
+		if err := r.writePacketf("%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -329,7 +330,7 @@ func (r *SpokesReceivePack) readPacket() ([]byte, error) {
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-// 
+//
 // If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
 // current Git repository with a  default name determined from the pack content
 func (r *SpokesReceivePack) readPack(_ context.Context, commands []command) error {
@@ -400,7 +401,7 @@ func (r *SpokesReceivePack) readPack(_ context.Context, commands []command) erro
 // non-delete commands.
 func includeNonDeletes(commands []command) bool {
 	for _, c := range commands {
-		if c.newOID != nullOID {
+		if c.newOID != nullSHA1OID && c.newOID != nullSHA256OID {
 			return true
 		}
 	}
