@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -49,6 +51,19 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	// Reference discovery phase
 	if err := r.performReferenceDiscovery(ctx); err != nil {
 		return err
+	}
+
+	// At this point the client knows what references the server is at, so it can send a
+	//list of reference update requests.  For each reference on the server
+	//that it wants to update, it sends a line listing the obj-id currently on
+	//the server, the obj-id the client would like to update it to and the name
+	//of the reference.
+	commands, _, err := r.readCommands(ctx)
+	if err != nil {
+		return err
+	}
+	if len(commands) == 0 {
+		return nil
 	}
 
 	panic("Not complete yet!")
@@ -129,7 +144,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			}
 		}
 	} else {
-		if _, err := fmt.Fprintf(r.output, "%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
+		if err := r.writePacketf("%s capabilities^{}\x00%s", nullOID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -214,4 +229,88 @@ func (r *SpokesReceivePack) writePacketf(format string, a ...interface{}) error 
 		return nil
 	}
 	return r.writePacketLine(buf.Bytes())
+}
+
+type command struct {
+	refname string
+	oldOID  string
+	newOID  string
+}
+
+var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
+
+// readCommands reads the set of ref update commands sent by the client side.
+func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, error) {
+	var commands []command
+	var clientCaps []string
+
+	first := true
+
+	for {
+		data, err := r.readPacket()
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading commands: %w", err)
+		}
+
+		if data == nil {
+			// That signifies a flush packet.
+			break
+		}
+
+		if first {
+			if i := bytes.IndexByte(data, 0); i != -1 {
+				clientCaps = strings.Split(string(data[i+1:]), " ")
+				data = data[:i]
+			}
+			first = false
+		}
+
+		if m := validReferenceName.FindStringSubmatch(string(data)); m != nil {
+			commands = append(
+				commands,
+				command{
+					oldOID:  m[1],
+					newOID:  m[2],
+					refname: m[3],
+				},
+			)
+			continue
+		}
+
+		return nil, nil, fmt.Errorf("bogus command: %s", data)
+	}
+
+	return commands, clientCaps, nil
+}
+
+// readPacket reads and returns the data from one packet.
+// `flush` packet returns `nil,nil`
+// `zero-length` packet, return a zero-length (but not nil) byte slice and a nil error.
+func (r *SpokesReceivePack) readPacket() ([]byte, error) {
+	var lenBytes [4]byte
+	// Read the packet length
+	if _, err := io.ReadFull(r.input, lenBytes[:]); err != nil {
+		return nil, fmt.Errorf("reading packet length: %w", err)
+	}
+	l, err := strconv.ParseUint(string(lenBytes[:]), 16, 16)
+	if err != nil {
+		return nil, fmt.Errorf("parsing packet length: %w", err)
+	}
+
+	if l == 0 {
+		// That was a flush packet.
+		return nil, nil
+	}
+
+	if l < 4 {
+		// Packet lengths needs to be 4 bytes
+		return nil, fmt.Errorf("invalid packet length: %d", l)
+	}
+
+	// We are ready to read the data itself
+	data := make([]byte, int(l-4))
+	if _, err := io.ReadFull(r.input, data); err != nil {
+		return nil, fmt.Errorf("reading packet data: %w", err)
+	}
+	return data, nil
 }
