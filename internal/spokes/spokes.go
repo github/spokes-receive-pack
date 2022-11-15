@@ -38,7 +38,7 @@ type SpokesReceivePack struct {
 func NewSpokesReceivePack(input io.Reader, output, err io.Writer, repoPath string) *SpokesReceivePack {
 	return &SpokesReceivePack{
 		input:    input,
-		output:   bufio.NewWriter(output),
+		output:   output,
 		err:      err,
 		repoPath: repoPath,
 	}
