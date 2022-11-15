@@ -288,7 +288,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 		if first {
 			if i := bytes.IndexByte(data, 0); i != -1 {
-				clientCaps = strings.Split(string(data[i+1:]), " ")
+				clientCaps = strings.Split(string(data[i+1:]), "")
 				data = data[:i]
 			}
 			first = false
