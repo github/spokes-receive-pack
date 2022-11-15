@@ -72,9 +72,10 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
-	if err := r.readPack(ctx, commands); err != nil {
+	var unpackErr error
+	if unpackErr := r.readPack(ctx, commands); unpackErr != nil {
 		for i := range commands {
-			commands[i].err = fmt.Sprintf("error processing packfiles: %s", err.Error())
+			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 		}
 	} else {
 		// We have successfully processed the pack-files, let's check their connectivity
@@ -82,14 +83,18 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 			for _, c := range commands {
 				if err := r.performCheckConnectivityOnObject(ctx, c.newOID); err != nil {
 					// Some references have missing objects, let's check them one by one to determine
-					// the ones which are actually failing
+					// the ones actually failing
 					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
 				}
 			}
 		}
 	}
 
-	panic("Not complete yet!")
+	if err := r.report(ctx, unpackErr == nil, commands); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // performReferenceDiscovery performs the reference discovery bits of the protocol
