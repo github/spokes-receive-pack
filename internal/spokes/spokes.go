@@ -392,7 +392,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 				var buf [999]byte
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
-					if err := r.writePacketf("\x02%s", buf[:n]); err != nil {
+					if err := writePacketf(r.err, "\x02%s", buf[:n]); err != nil {
 						return fmt.Errorf("writing to error sideband: %w", err)
 					}
 				}
