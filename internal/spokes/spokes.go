@@ -487,6 +487,52 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 	return nil
 }
 
+// report the success/failure of the push operation to the client
+func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
+	var buf bytes.Buffer
+	if unpackOK {
+		if err := writePacketLine(&buf, []byte("unpack ok")); err != nil {
+			return err
+		}
+	} else {
+		if err := writePacketLine(&buf, []byte("unpack index-pack failed")); err != nil {
+			return err
+		}
+	}
+	for _, c := range commands {
+		if c.err != "" {
+			if err := writePacketf(&buf, "ng %s %s\n", c.refname, c.err); err != nil {
+				return err
+			}
+		} else {
+			if err := writePacketf(&buf, "ok %s\n", c.refname); err != nil {
+				return err
+			}
+		}
+	}
+
+	if _, err := fmt.Fprint(&buf, "0000"); err != nil {
+		return err
+	}
+
+	output := buf.Bytes()
+
+	for len(output) > 0 {
+		n := 4096
+		if len(output) < n {
+			n = len(output)
+		}
+		if err := writePacketf(r.output, "\x01%s", output[:n]); err != nil {
+			return fmt.Errorf("writing output to client: %w", err)
+		}
+		output = output[n:]
+	}
+	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
+		return nil
+	}
+	return nil
+}
+
 // includeNonDeletes returns true iff `commands` includes any
 // non-delete commands.
 func includeNonDeletes(commands []command) bool {
