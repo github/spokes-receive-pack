@@ -157,17 +157,17 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	if len(references) > 0 {
-		if err := r.writePacketf("%s\x00%s\n", references[0], capabilities); err != nil {
+		if err := writePacketf(r.output, "%s\x00%s\n", references[0], capabilities); err != nil {
 			return fmt.Errorf("writing capability packet: %w", err)
 		}
 
 		for i := 1; i < len(references); i++ {
-			if err := r.writePacketf("%s\n", references[i]); err != nil {
+			if err := writePacketf(r.output, "%s\n", references[i]); err != nil {
 				return fmt.Errorf("writing ref advertisement packet: %w", err)
 			}
 		}
 	} else {
-		if err := r.writePacketf("%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
+		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -224,14 +224,14 @@ func isHiddenRef(line []byte, entries []config.ConfigEntry) bool {
 }
 
 // writePacket writes `data` to the `r.output` as a pkt-line.
-func (r *SpokesReceivePack) writePacketLine(data []byte) error {
+func writePacketLine(w io.Writer, data []byte) error {
 	if len(data) > maxPacketDataLength {
 		return fmt.Errorf("data exceeds maximum pkt-line length: %d", len(data))
 	}
-	if _, err := fmt.Fprintf(r.output, "%04x", 4+len(data)); err != nil {
+	if _, err := fmt.Fprintf(w, "%04x", 4+len(data)); err != nil {
 		return fmt.Errorf("writing packet length: %w", err)
 	}
-	if _, err := r.output.Write(data); err != nil {
+	if _, err := w.Write(data); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil
@@ -239,7 +239,7 @@ func (r *SpokesReceivePack) writePacketLine(data []byte) error {
 
 // writePacketf formats the given data then writes the result to the output stored in the `SpokesReceivePack`
 // as a pkt-line.
-func (r *SpokesReceivePack) writePacketf(format string, a ...interface{}) error {
+func writePacketf(w io.Writer, format string, a ...interface{}) error {
 	var buf bytes.Buffer
 	if _, err := fmt.Fprintf(&buf, format, a...); err != nil {
 		return fmt.Errorf("formatting packet: %w", err)
@@ -251,7 +251,7 @@ func (r *SpokesReceivePack) writePacketf(format string, a ...interface{}) error 
 	if buf.Len() == 0 {
 		return nil
 	}
-	return r.writePacketLine(buf.Bytes())
+	return writePacketLine(w, buf.Bytes())
 }
 
 type command struct {
