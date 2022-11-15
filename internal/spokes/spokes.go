@@ -467,8 +467,9 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	return nil
 }
 
-func (r *SpokesReceivePack) performCheckConnectivityOnObject(_ context.Context, oid string) error {
-	cmd := exec.Command(
+func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
+	cmd := exec.CommandContext(
+		ctx,
 		"git",
 		"rev-list",
 		"--objects",
