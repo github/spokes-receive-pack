@@ -43,7 +43,7 @@ $(BIN):
 
 # Build the main service app:
 $(BIN)/spokes-receive-pack: FORCE | $(BIN)
-	$(GO) build -ldflags '-X main.BuildVersion=$(APPVERSION)' \
+	$(GO) build $(BUILDTAGS) -ldflags '-X main.BuildVersion=$(APPVERSION)' \
 		 -o $@ .
 
 ###########################################################################
@@ -52,6 +52,7 @@ $(BIN)/spokes-receive-pack: FORCE | $(BIN)
 
 .PHONY: test
 test: go-test
+test-integration: BUILDTAGS=-tags integration
 test-integration: all go-test-integration
 
 TESTFLAGS := -race

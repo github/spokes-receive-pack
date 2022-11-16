@@ -62,7 +62,7 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 	require.NoError(os.RemoveAll(suite.localRepo))
 }
 
-func (suite *SpokesReceivePackTestSuite) TestSuccessfulPush() {
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
