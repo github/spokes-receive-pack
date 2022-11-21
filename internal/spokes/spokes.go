@@ -62,7 +62,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	//that it wants to update, it sends a line listing the obj-id currently on
 	//the server, the obj-id the client would like to update it to and the name
 	//of the reference.
-	commands, _, err := r.readCommands(ctx)
+	commands, capabilities, err := r.readCommands(ctx)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr = r.readPack(ctx, commands); unpackErr != nil {
+	if unpackErr := r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 		}
@@ -317,7 +317,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.
 //
 // If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
 // current Git repository with a  default name determined from the pack content
-func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) error {
+func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
@@ -357,7 +357,12 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 				_ = stderr.Close()
 			}()
 			for {
-				var buf [999]byte
+				var bufferSize = 999
+				if capabilities.SideBand64k().Value() == pktline.SideBand64k {
+					bufferSize = 65519
+				}
+				buf := make([]byte, bufferSize, bufferSize)
+
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
 					if err := writePacketf(r.err, "\x02%s", buf[:n]); err != nil {
