@@ -38,7 +38,7 @@ type SpokesReceivePack struct {
 func NewSpokesReceivePack(input io.Reader, output, err io.Writer, repoPath string) *SpokesReceivePack {
 	return &SpokesReceivePack{
 		input:    input,
-		output:   bufio.NewWriter(output),
+		output:   output,
 		err:      err,
 		repoPath: repoPath,
 	}
@@ -72,9 +72,10 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
-	if err := r.readPack(ctx, commands); err != nil {
+	var unpackErr error
+	if unpackErr = r.readPack(ctx, commands); unpackErr != nil {
 		for i := range commands {
-			commands[i].err = fmt.Sprintf("error processing packfiles: %s", err.Error())
+			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 		}
 	} else {
 		// We have successfully processed the pack-files, let's check their connectivity
@@ -82,14 +83,18 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 			for _, c := range commands {
 				if err := r.performCheckConnectivityOnObject(ctx, c.newOID); err != nil {
 					// Some references have missing objects, let's check them one by one to determine
-					// the ones which are actually failing
+					// the ones actually failing
 					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
 				}
 			}
 		}
 	}
 
-	panic("Not complete yet!")
+	if err := r.report(ctx, unpackErr == nil, commands); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // performReferenceDiscovery performs the reference discovery bits of the protocol
@@ -157,17 +162,17 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	if len(references) > 0 {
-		if err := r.writePacketf("%s\x00%s\n", references[0], capabilities); err != nil {
+		if err := writePacketf(r.output, "%s\x00%s\n", references[0], capabilities); err != nil {
 			return fmt.Errorf("writing capability packet: %w", err)
 		}
 
 		for i := 1; i < len(references); i++ {
-			if err := r.writePacketf("%s\n", references[i]); err != nil {
+			if err := writePacketf(r.output, "%s\n", references[i]); err != nil {
 				return fmt.Errorf("writing ref advertisement packet: %w", err)
 			}
 		}
 	} else {
-		if err := r.writePacketf("%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
+		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -224,14 +229,14 @@ func isHiddenRef(line []byte, entries []config.ConfigEntry) bool {
 }
 
 // writePacket writes `data` to the `r.output` as a pkt-line.
-func (r *SpokesReceivePack) writePacketLine(data []byte) error {
+func writePacketLine(w io.Writer, data []byte) error {
 	if len(data) > maxPacketDataLength {
 		return fmt.Errorf("data exceeds maximum pkt-line length: %d", len(data))
 	}
-	if _, err := fmt.Fprintf(r.output, "%04x", 4+len(data)); err != nil {
+	if _, err := fmt.Fprintf(w, "%04x", 4+len(data)); err != nil {
 		return fmt.Errorf("writing packet length: %w", err)
 	}
-	if _, err := r.output.Write(data); err != nil {
+	if _, err := w.Write(data); err != nil {
 		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil
@@ -239,7 +244,7 @@ func (r *SpokesReceivePack) writePacketLine(data []byte) error {
 
 // writePacketf formats the given data then writes the result to the output stored in the `SpokesReceivePack`
 // as a pkt-line.
-func (r *SpokesReceivePack) writePacketf(format string, a ...interface{}) error {
+func writePacketf(w io.Writer, format string, a ...interface{}) error {
 	var buf bytes.Buffer
 	if _, err := fmt.Fprintf(&buf, format, a...); err != nil {
 		return fmt.Errorf("formatting packet: %w", err)
@@ -251,7 +256,7 @@ func (r *SpokesReceivePack) writePacketf(format string, a ...interface{}) error 
 	if buf.Len() == 0 {
 		return nil
 	}
-	return r.writePacketLine(buf.Bytes())
+	return writePacketLine(w, buf.Bytes())
 }
 
 type command struct {
@@ -283,7 +288,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 		if first {
 			if i := bytes.IndexByte(data, 0); i != -1 {
-				clientCaps = strings.Split(string(data[i+1:]), " ")
+				clientCaps = strings.Split(string(data[i+1:]), "")
 				data = data[:i]
 			}
 			first = false
@@ -387,7 +392,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 				var buf [999]byte
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
-					if err := r.writePacketf("\x02%s", buf[:n]); err != nil {
+					if err := writePacketf(r.err, "\x02%s", buf[:n]); err != nil {
 						return fmt.Errorf("writing to error sideband: %w", err)
 					}
 				}
@@ -484,6 +489,52 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
 	}
 
+	return nil
+}
+
+// report the success/failure of the push operation to the client
+func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
+	var buf bytes.Buffer
+	if unpackOK {
+		if err := writePacketLine(&buf, []byte("unpack ok")); err != nil {
+			return err
+		}
+	} else {
+		if err := writePacketLine(&buf, []byte("unpack index-pack failed")); err != nil {
+			return err
+		}
+	}
+	for _, c := range commands {
+		if c.err != "" {
+			if err := writePacketf(&buf, "ng %s %s\n", c.refname, c.err); err != nil {
+				return err
+			}
+		} else {
+			if err := writePacketf(&buf, "ok %s\n", c.refname); err != nil {
+				return err
+			}
+		}
+	}
+
+	if _, err := fmt.Fprint(&buf, "0000"); err != nil {
+		return err
+	}
+
+	output := buf.Bytes()
+
+	for len(output) > 0 {
+		n := 4096
+		if len(output) < n {
+			n = len(output)
+		}
+		if err := writePacketf(r.output, "\x01%s", output[:n]); err != nil {
+			return fmt.Errorf("writing output to client: %w", err)
+		}
+		output = output[n:]
+	}
+	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
+		return nil
+	}
 	return nil
 }
 
