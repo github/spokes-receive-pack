@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
+	"github.com/github/spokes-receive-pack/internal/pktline"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -269,32 +269,32 @@ type command struct {
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
-func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, error) {
+func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.Capabilities, error) {
 	var commands []command
-	var clientCaps []string
 
 	first := true
+	pl := pktline.New()
+	var capabilities pktline.Capabilities
 
 	for {
-		data, err := r.readPacket()
+		err := pl.Read(r.input)
 		if err != nil {
-			return nil, nil, fmt.Errorf("reading commands: %w", err)
+			return nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
 		}
 
-		if data == nil {
-			// That signifies a flush packet.
+		if pl.IsFlush() {
 			break
 		}
 
 		if first {
-			if i := bytes.IndexByte(data, 0); i != -1 {
-				clientCaps = strings.Split(string(data[i+1:]), "")
-				data = data[:i]
+			capabilities, err = pl.Capabilities()
+			if err != nil {
+				return nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
 			}
 			first = false
 		}
 
-		if m := validReferenceName.FindStringSubmatch(string(data)); m != nil {
+		if m := validReferenceName.FindStringSubmatch(string(pl.Payload)); m != nil {
 			commands = append(
 				commands,
 				command{
@@ -306,42 +306,10 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 			continue
 		}
 
-		return nil, nil, fmt.Errorf("bogus command: %s", data)
+		return nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
 	}
 
-	return commands, clientCaps, nil
-}
-
-// readPacket reads and returns the data from one packet.
-// `flush` packet returns `nil,nil`
-// `zero-length` packet, return a zero-length (but not nil) byte slice and a nil error.
-func (r *SpokesReceivePack) readPacket() ([]byte, error) {
-	var lenBytes [4]byte
-	// Read the packet length
-	if _, err := io.ReadFull(r.input, lenBytes[:]); err != nil {
-		return nil, fmt.Errorf("reading packet length: %w", err)
-	}
-	l, err := strconv.ParseUint(string(lenBytes[:]), 16, 16)
-	if err != nil {
-		return nil, fmt.Errorf("parsing packet length: %w", err)
-	}
-
-	if l == 0 {
-		// That was a flush packet.
-		return nil, nil
-	}
-
-	if l < 4 {
-		// Packet lengths needs to be 4 bytes
-		return nil, fmt.Errorf("invalid packet length: %d", l)
-	}
-
-	// We are ready to read the data itself
-	data := make([]byte, int(l-4))
-	if _, err := io.ReadFull(r.input, data); err != nil {
-		return nil, fmt.Errorf("reading packet data: %w", err)
-	}
-	return data, nil
+	return commands, capabilities, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
