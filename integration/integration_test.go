@@ -62,12 +62,21 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 	require.NoError(os.RemoveAll(suite.localRepo))
 }
 
-func (suite *SpokesReceivePackTestSuite) TestSuccessfulPush() {
+func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
 		exec.Command(
 			"git", "push", "--receive-pack=spokes-receive-pack", "r", "master").Run(),
+		"unexpected error running the push with the default receive-pack implementation")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(
+		suite.T(),
+		exec.Command(
+			"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "master").Run(),
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 

@@ -13,18 +13,20 @@ APPVERSION := $(or $(shell git rev-parse HEAD 2>/dev/null),"unknown")
 # Add items to this variable to add to the `clean` target:
 CLEAN :=
 
-# Generic Go binaries, whose source lives under `cmd/NAME` and which
-# can be compiled using the generic `go-binaries` rule below:
+# Generic Go binaries
 GO_BINARIES := \
+	$(BIN)/spokes-receive-pack-wrapper
+
+EXECUTABLES := \
 	$(BIN)/spokes-receive-pack
 
-CLEAN += $(GO_BINARIES)
+CLEAN += $(EXECUTABLES)
 
 .PHONY: FORCE
 
 .PHONY: all
 all: info
-all: $(GO_BINARIES)
+all: $(EXECUTABLES)
 
 .PHONY: info
 info:
@@ -43,8 +45,14 @@ $(BIN):
 
 # Build the main service app:
 $(BIN)/spokes-receive-pack: FORCE | $(BIN)
-	$(GO) build -ldflags '-X main.BuildVersion=$(APPVERSION)' \
-		 -o $@ .
+	$(GO) build -ldflags '-X main.BuildVersion=$(APPVERSION)' -o $@ .
+
+# Build other generic Go binaries:
+.PHONY: go-binaries
+go-binaries: $(GO_BINARIES)
+$(GO_BINARIES): $(BIN)/%: cmd/% FORCE | $(BIN)
+	$(GO) build $(BUILDTAGS) -o $@ ./$<
+
 
 ###########################################################################
 
@@ -52,7 +60,8 @@ $(BIN)/spokes-receive-pack: FORCE | $(BIN)
 
 .PHONY: test
 test: go-test
-test-integration: all go-test-integration
+test-integration: BUILDTAGS=-tags integration
+test-integration: all go-binaries go-test-integration
 
 TESTFLAGS := -race
 TESTINTEGRATIONFLAGS := $(TESTFLAGS) --tags=integration
