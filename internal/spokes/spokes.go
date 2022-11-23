@@ -361,7 +361,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 				if capabilities.SideBand64k().Value() == pktline.SideBand64k {
 					bufferSize = 65519
 				}
-				buf := make([]byte, bufferSize, bufferSize)
+				buf := make([]byte, bufferSize)
 
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
