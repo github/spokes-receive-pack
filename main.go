@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/github/spokes-receive-pack/internal/config"
 	"io"
 	"os"
 
@@ -14,11 +13,6 @@ import (
 const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
 
 func main() {
-	if err := config.SetupEnvProviders(); err != nil {
-		fmt.Fprintf(os.Stderr, "unexpected error configuring the environment: %s", err.Error())
-		os.Exit(1)
-	}
-
 	args := os.Args[1:]
 	if len(args) > 1 {
 		fmt.Fprintf(os.Stderr, "unexpected number (%d) of arguments: only one argument should be passed", len(args))
