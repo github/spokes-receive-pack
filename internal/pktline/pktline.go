@@ -1,7 +1,6 @@
 package pktline
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -99,15 +98,10 @@ func (pl *Pktline) Read(r io.Reader) error {
 
 	// Capabilities are (optionally) sent along the first packet line
 	if !pl.processedCapabilities {
-		if pl.Payload[len(pl.Payload)-1] == 0 {
-			pl.Payload = pl.Payload[:len(pl.Payload)-1]
-			buffReader := bufio.NewReader(r)
-			caps, err := buffReader.ReadBytes('\n')
-			if err != nil {
-				return fmt.Errorf("reading capabilities: %w", err)
-			}
-			pl.CapabilitiesPayload = caps
+		if index := bytes.IndexByte(pl.Payload, 0); index != -1 {
+			pl.CapabilitiesPayload = pl.Payload[index+1:]
 			pl.processedCapabilities = true
+			pl.Payload = pl.Payload[:index]
 		}
 	}
 

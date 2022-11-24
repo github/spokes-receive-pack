@@ -105,7 +105,7 @@ func TestRead(t *testing.T) {
 
 func TestParseLineWithCapabilities(t *testing.T) {
 	pl := pktline.New()
-	r := strings.NewReader("00677d1665144a3a975c05f1f43902ddaf084e784dbe 74730d410fcb6603ace96f1dc55ea6196122532d refs/heads/debug\000report-status delete-refs ofs-delta\n")
+	r := strings.NewReader("00820000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main\000report-status side-band-64k\n")
 
 	err := pl.Read(r)
 	require.NoError(t, err, "reading pktline")
@@ -116,8 +116,8 @@ func TestParseLineWithCapabilities(t *testing.T) {
 	assert.Equal(t, "report-status", caps.ReportStatus().Name())
 
 	expected := expectedPktline{
-		size:    103,
-		payload: "7d1665144a3a975c05f1f43902ddaf084e784dbe 74730d410fcb6603ace96f1dc55ea6196122532d refs/heads/debug",
+		size:    130,
+		payload: "0000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main",
 	}
 
 	assert.NoError(t, expected.CheckEqual(pl))
