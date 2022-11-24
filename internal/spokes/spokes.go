@@ -5,10 +5,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/github/go-pipe/pipe"
-	"github.com/github/spokes-receive-pack/internal/config"
-	"github.com/github/spokes-receive-pack/internal/pktline"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"os/exec"
@@ -16,6 +12,11 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/github/go-pipe/pipe"
+	"github.com/github/spokes-receive-pack/internal/config"
+	"github.com/github/spokes-receive-pack/internal/pktline"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -358,7 +359,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			}()
 			for {
 				var bufferSize = 999
-				if capabilities.SideBand64k().Value() == pktline.SideBand64k {
+				if _, defined := capabilities.Get(pktline.SideBand64k); defined {
 					bufferSize = 65519
 				}
 				buf := make([]byte, bufferSize)

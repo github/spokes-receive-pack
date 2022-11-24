@@ -168,3 +168,8 @@ func (c Capabilities) Filter() Capability {
 func (c Capabilities) SessionId() Capability {
 	return c.caps[SessionId]
 }
+
+func (c Capabilities) Get(cap string) (Capability, bool) {
+	capability, found := c.caps[cap]
+	return capability, found
+}
