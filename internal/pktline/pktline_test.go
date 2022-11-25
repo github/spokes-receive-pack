@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -220,12 +219,4 @@ func TestReadErrors(t *testing.T) {
 			}
 		})
 	}
-}
-
-func newLogWriter() io.Writer {
-	log, err := os.OpenFile("/tmp/test-spokes-receive-pack.log", os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		panic(err)
-	}
-	return log
 }
