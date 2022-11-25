@@ -73,10 +73,12 @@ type Capabilities struct {
 
 // ParseCapabilities converts the passed capabilities (as received in the protocol) into its corresponding typed object
 func ParseCapabilities(capabilities []byte) (Capabilities, error) {
-	caps := strings.Split(string(capabilities), " ")
+	caps := string(capabilities)
+	caps = strings.TrimSuffix(caps, "\n")
+	splitted := strings.Split(caps, " ")
 
 	parsedCaps := make(map[string]Capability, len(caps))
-	for _, c := range caps {
+	for _, c := range splitted {
 		cap, err := newCapability(c)
 		if err != nil {
 			return Capabilities{}, fmt.Errorf("unable to parse Capability %s", c)
