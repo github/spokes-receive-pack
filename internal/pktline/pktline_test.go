@@ -3,12 +3,13 @@ package pktline_test
 import (
 	"errors"
 	"fmt"
-	"github.com/github/spokes-receive-pack/internal/pktline"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/github/spokes-receive-pack/internal/pktline"
+	"github.com/stretchr/testify/assert"
 )
 
 type expectedPktline struct {
@@ -103,24 +104,81 @@ func TestRead(t *testing.T) {
 	}
 }
 
-func TestParseLineWithCapabilities(t *testing.T) {
-	pl := pktline.New()
-	r := strings.NewReader("00820000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main\000report-status side-band-64k\n")
+func TestReadWithCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected []expectedPktline
+	}{
+		{
+			name:  "single-line",
+			input: "00820000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main\000report-status side-band-64k\n",
+			expected: []expectedPktline{
+				{
+					size:    130,
+					payload: "0000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main",
+				},
+			},
+		},
+		{
+			name: "two-lines",
+			input: "00860000000000000000000000000000000000000000 791d15c40c6f465afebc1ba6a11761c0b43e1c35 refs/heads/branch-1\000report-status side-band-64k\n" +
+				"00650000000000000000000000000000000000000000 f01567bcabe2741094ab2b67155ce26a9527746f refs/heads/main",
+			expected: []expectedPktline{
+				{
+					size:    134,
+					payload: "0000000000000000000000000000000000000000 791d15c40c6f465afebc1ba6a11761c0b43e1c35 refs/heads/branch-1",
+				},
+				{
+					size:    101,
+					payload: "0000000000000000000000000000000000000000 f01567bcabe2741094ab2b67155ce26a9527746f refs/heads/main",
+				},
+			},
+		},
+		{
+			name: "four-lines",
+			input: "00860000000000000000000000000000000000000000 bf7bf7a2eeee69e967d59aaab78f9022a1447b12 refs/heads/branch-1\000report-status side-band-64k\n" +
+				"00690000000000000000000000000000000000000000 f13ce6e8f50b0aa7aae764434ee15a414da3f50f refs/heads/branch-2" +
+				"00690000000000000000000000000000000000000000 6d0be418a4c1776981726d1a8d39cd7f790efb61 refs/heads/branch-3" +
+				"00650000000000000000000000000000000000000000 5bf437d78e72522939e6b17aeed1a5b0ae73a100 refs/heads/main",
+			expected: []expectedPktline{
+				{
+					size:    134,
+					payload: "0000000000000000000000000000000000000000 bf7bf7a2eeee69e967d59aaab78f9022a1447b12 refs/heads/branch-1",
+				},
+				{
+					size:    105,
+					payload: "0000000000000000000000000000000000000000 f13ce6e8f50b0aa7aae764434ee15a414da3f50f refs/heads/branch-2",
+				},
+				{
+					size:    105,
+					payload: "0000000000000000000000000000000000000000 6d0be418a4c1776981726d1a8d39cd7f790efb61 refs/heads/branch-3",
+				},
+				{
+					size:    101,
+					payload: "0000000000000000000000000000000000000000 5bf437d78e72522939e6b17aeed1a5b0ae73a100 refs/heads/main",
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pl := pktline.New()
+			r := strings.NewReader(tc.input)
+			for i, expected := range tc.expected {
+				assert.NoError(t, pl.Read(r), "reading pktline")
+				assert.NoErrorf(t, expected.CheckEqual(pl), "pktline %d incorrect", i)
+			}
 
-	err := pl.Read(r)
-	require.NoError(t, err, "reading pktline")
+			err := pl.Read(r)
+			assert.True(t, errors.Is(err, io.EOF), "expected io.EOF after reading all pktlines")
 
-	caps, err := pl.Capabilities()
-	assert.NoError(t, err)
+			caps, err := pl.Capabilities()
+			assert.NoError(t, err)
 
-	assert.Equal(t, "report-status", caps.ReportStatus().Name())
-
-	expected := expectedPktline{
-		size:    130,
-		payload: "0000000000000000000000000000000000000000 f9cc25952a0d66c0a388ee0decfda12a0122404d refs/heads/main",
+			assert.Equal(t, "report-status", caps.ReportStatus().Name())
+			assert.Equal(t, "side-band-64k", caps.SideBand64k().Name())
+		})
 	}
-
-	assert.NoError(t, expected.CheckEqual(pl))
 }
 
 func TestReadErrors(t *testing.T) {
@@ -162,4 +220,12 @@ func TestReadErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newLogWriter() io.Writer {
+	log, err := os.OpenFile("/tmp/test-spokes-receive-pack.log", os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		panic(err)
+	}
+	return log
 }
