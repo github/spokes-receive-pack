@@ -369,7 +369,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		_, _ = io.Copy(r.err, stderr)
 	}
 
-	return err
+	return nil
 }
 
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
