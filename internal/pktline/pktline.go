@@ -38,7 +38,21 @@ func (pl *Pktline) IsHeartbeat() bool {
 }
 
 func (pl *Pktline) Capabilities() (Capabilities, error) {
-	return ParseCapabilities(pl.CapabilitiesPayload)
+	caps, err := ParseCapabilities(pl.CapabilitiesPayload)
+
+	if err != nil {
+		return Capabilities{}, err
+	}
+
+	// Here we can implement the different rules that the different capabilities must satisfy
+	_, sb64kFound := caps.Get(SideBand64k)
+	_, sbFound := caps.Get(SideBand)
+
+	if sb64kFound && sbFound {
+		return Capabilities{}, fmt.Errorf("%s and %s capabilities cannot requested at the same time", SideBand64k, SideBand)
+	}
+
+	return caps, nil
 }
 
 // Size returns the total size of `pl` (including the length) by
