@@ -342,12 +342,45 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		cmd.Args = append(cmd.Args, filepath.Join(quarantine, file))
 	}
 
-	// We want to discard stdout but forward stderr to `w` in a
-	// sideband:
+	// We want to discard stdout but forward stderr to `w`
+	// Depending on the sideband capability we would need to do it in a sideband
 	cmd.Stdin = r.input
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("creating pipe for 'index-pack' stderr: %w", err)
+	}
+
+	eg, err := startSidebandMultiplexer(stderr, r.output, capabilities)
+	if err != nil {
+		// Sideband has been requested, but we haven't been able to deal with it
+		return err
+	}
+
+	if err = cmd.Start(); err != nil {
+		if eg != nil {
+			_ = eg.Wait()
+		}
+		return fmt.Errorf("starting 'index-pack': %w", err)
+	}
+
+	if eg != nil {
+		_ = eg.Wait()
+	} else {
+		_, _ = io.Copy(r.err, stderr)
+	}
+
+	return err
+}
+
+// startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
+// stderr of the command `cmd` into the indicated `output`
+func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabilities pktline.Capabilities) (*errgroup.Group, error) {
+	_, sbDefined := capabilities.Get(pktline.SideBand)
+	_, sb64kDefined := capabilities.Get(pktline.SideBand64k)
+
+	if !sbDefined && !sb64kDefined {
+		// no sideband capability has been defined
+		return nil, nil
 	}
 
 	var eg errgroup.Group
@@ -359,14 +392,14 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			}()
 			for {
 				var bufferSize = 999
-				if _, defined := capabilities.Get(pktline.SideBand64k); defined {
+				if sb64kDefined {
 					bufferSize = 65519
 				}
 				buf := make([]byte, bufferSize)
 
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
-					if err := writePacketf(r.err, "\x02%s", buf[:n]); err != nil {
+					if err := writePacketf(output, "\x02%s", buf[:n]); err != nil {
 						return fmt.Errorf("writing to error sideband: %w", err)
 					}
 				}
@@ -380,12 +413,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		},
 	)
 
-	if err := cmd.Run(); err != nil {
-		_ = eg.Wait()
-		return fmt.Errorf("starting 'index-pack': %w", err)
-	}
-
-	return eg.Wait()
+	return &eg, nil
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
