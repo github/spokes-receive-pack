@@ -4,12 +4,13 @@ package integration
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
 type SpokesReceivePackTestSuite struct {
@@ -42,6 +43,18 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 		"unable to create a README.md file in the Git repo")
 	req.NoError(exec.Command("git", "add", ".").Run())
 	req.NoError(exec.Command("git", "commit", "--message", "First commit").Run())
+
+	// add some extra content in different branches
+	branches := []string{"branch-1", "branch-2", "branch-3"}
+	for i, branch := range branches {
+		req.NoError(exec.Command("git", "checkout", "-b", branch).Run())
+		name := fmt.Sprintf("file-%d.txt", i)
+		req.NoErrorf(
+			os.WriteFile(name, []byte(fmt.Sprintf("A test file with name %s", name)), 0644),
+			"unable to create %s file in the Git repo", name)
+		req.NoError(exec.Command("git", "add", ".").Run())
+		req.NoError(exec.Command("git", "commit", "--message", fmt.Sprintf("Commit %d", i)).Run())
+	}
 
 	// configure the remote
 	req.NoError(exec.Command("git", "remote", "add", "r", remoteRepo).Run())
@@ -77,6 +90,15 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
 		suite.T(),
 		exec.Command(
 			"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "master").Run(),
+		"unexpected error running the push with the custom spokes-receive-pack program")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(
+		suite.T(),
+		exec.Command(
+			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 

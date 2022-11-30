@@ -5,17 +5,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/github/go-pipe/pipe"
-	"github.com/github/spokes-receive-pack/internal/config"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/github/go-pipe/pipe"
+	"github.com/github/spokes-receive-pack/internal/config"
+	"github.com/github/spokes-receive-pack/internal/pktline"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -62,7 +63,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	//that it wants to update, it sends a line listing the obj-id currently on
 	//the server, the obj-id the client would like to update it to and the name
 	//of the reference.
-	commands, _, err := r.readCommands(ctx)
+	commands, capabilities, err := r.readCommands(ctx)
 	if err != nil {
 		return err
 	}
@@ -73,7 +74,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr = r.readPack(ctx, commands); unpackErr != nil {
+	if unpackErr := r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 		}
@@ -269,32 +270,32 @@ type command struct {
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
-func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, error) {
+func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.Capabilities, error) {
 	var commands []command
-	var clientCaps []string
 
 	first := true
+	pl := pktline.New()
+	var capabilities pktline.Capabilities
 
 	for {
-		data, err := r.readPacket()
+		err := pl.Read(r.input)
 		if err != nil {
-			return nil, nil, fmt.Errorf("reading commands: %w", err)
+			return nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
 		}
 
-		if data == nil {
-			// That signifies a flush packet.
+		if pl.IsFlush() {
 			break
 		}
 
 		if first {
-			if i := bytes.IndexByte(data, 0); i != -1 {
-				clientCaps = strings.Split(string(data[i+1:]), "")
-				data = data[:i]
+			capabilities, err = pl.Capabilities()
+			if err != nil {
+				return nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
 			}
 			first = false
 		}
 
-		if m := validReferenceName.FindStringSubmatch(string(data)); m != nil {
+		if m := validReferenceName.FindStringSubmatch(string(pl.Payload)); m != nil {
 			commands = append(
 				commands,
 				command{
@@ -306,42 +307,10 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 			continue
 		}
 
-		return nil, nil, fmt.Errorf("bogus command: %s", data)
+		return nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
 	}
 
-	return commands, clientCaps, nil
-}
-
-// readPacket reads and returns the data from one packet.
-// `flush` packet returns `nil,nil`
-// `zero-length` packet, return a zero-length (but not nil) byte slice and a nil error.
-func (r *SpokesReceivePack) readPacket() ([]byte, error) {
-	var lenBytes [4]byte
-	// Read the packet length
-	if _, err := io.ReadFull(r.input, lenBytes[:]); err != nil {
-		return nil, fmt.Errorf("reading packet length: %w", err)
-	}
-	l, err := strconv.ParseUint(string(lenBytes[:]), 16, 16)
-	if err != nil {
-		return nil, fmt.Errorf("parsing packet length: %w", err)
-	}
-
-	if l == 0 {
-		// That was a flush packet.
-		return nil, nil
-	}
-
-	if l < 4 {
-		// Packet lengths needs to be 4 bytes
-		return nil, fmt.Errorf("invalid packet length: %d", l)
-	}
-
-	// We are ready to read the data itself
-	data := make([]byte, int(l-4))
-	if _, err := io.ReadFull(r.input, data); err != nil {
-		return nil, fmt.Errorf("reading packet data: %w", err)
-	}
-	return data, nil
+	return commands, capabilities, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
@@ -349,7 +318,7 @@ func (r *SpokesReceivePack) readPacket() ([]byte, error) {
 //
 // If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
 // current Git repository with a  default name determined from the pack content
-func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) error {
+func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
@@ -373,12 +342,43 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 		cmd.Args = append(cmd.Args, filepath.Join(quarantine, file))
 	}
 
-	// We want to discard stdout but forward stderr to `w` in a
-	// sideband:
+	// We want to discard stdout but forward stderr to `w`
+	// Depending on the sideband capability we would need to do it in a sideband
 	cmd.Stdin = r.input
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("creating pipe for 'index-pack' stderr: %w", err)
+	}
+
+	eg, err := startSidebandMultiplexer(stderr, r.output, capabilities)
+	if err != nil {
+		// Sideband has been requested, but we haven't been able to deal with it
+		return err
+	}
+
+	if err = cmd.Start(); err != nil {
+		if eg != nil {
+			_ = eg.Wait()
+		}
+		return fmt.Errorf("starting 'index-pack': %w", err)
+	}
+
+	if eg != nil {
+		_ = eg.Wait()
+	}
+
+	return nil
+}
+
+// startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
+// stderr of the command `cmd` into the indicated `output`
+func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabilities pktline.Capabilities) (*errgroup.Group, error) {
+	_, sbDefined := capabilities.Get(pktline.SideBand)
+	_, sb64kDefined := capabilities.Get(pktline.SideBand64k)
+
+	if !sbDefined && !sb64kDefined {
+		// no sideband capability has been defined
+		return nil, nil
 	}
 
 	var eg errgroup.Group
@@ -389,10 +389,15 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 				_ = stderr.Close()
 			}()
 			for {
-				var buf [999]byte
+				var bufferSize = 999
+				if sb64kDefined {
+					bufferSize = 65519
+				}
+				buf := make([]byte, bufferSize)
+
 				n, err := stderr.Read(buf[:])
 				if n != 0 {
-					if err := writePacketf(r.err, "\x02%s", buf[:n]); err != nil {
+					if err := writePacketf(output, "\x02%s", buf[:n]); err != nil {
 						return fmt.Errorf("writing to error sideband: %w", err)
 					}
 				}
@@ -406,12 +411,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command) er
 		},
 	)
 
-	if err := cmd.Run(); err != nil {
-		_ = eg.Wait()
-		return fmt.Errorf("starting 'index-pack': %w", err)
-	}
-
-	return eg.Wait()
+	return &eg, nil
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
