@@ -45,17 +45,10 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string)
 	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
 	flag.Parse()
 
-	var repoPath string
-	switch len(args) {
-	case 1:
-		repoPath = args[0]
-	case 2:
-		repoPath = args[1]
-	case 3:
-		repoPath = args[2]
-	default:
-		return nil, fmt.Errorf("Unexpected number of args (%d). %s are not the expected args ", len(args), args)
+	if flag.NArg() != 1 {
+		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", len(flag.Narg()), flag.Args())
 	}
+	repoPath := flag.Args()[0]
 
 	return &SpokesReceivePack{
 		input:         input,
