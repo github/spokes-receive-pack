@@ -365,8 +365,6 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	if eg != nil {
 		_ = eg.Wait()
-	} else {
-		_, _ = io.Copy(r.err, stderr)
 	}
 
 	return nil
