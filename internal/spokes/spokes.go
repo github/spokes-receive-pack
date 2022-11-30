@@ -46,7 +46,7 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string)
 	flag.Parse()
 
 	if flag.NArg() != 1 {
-		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", len(flag.Narg()), flag.Args())
+		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
 	}
 	repoPath := flag.Args()[0]
 
