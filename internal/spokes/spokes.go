@@ -76,8 +76,18 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	}
 
 	// Reference discovery phase
-	if err := r.performReferenceDiscovery(ctx); err != nil {
-		return err
+	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
+	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
+	if r.advertiseRefs || !r.statelessRPC {
+		if err := r.performReferenceDiscovery(ctx); err != nil {
+			return err
+		}
+	}
+
+	if r.advertiseRefs {
+		// At this point we are using the HTTP protocol and the http-backend-info-refs/advertise-refs option has been set,
+		// so we only need to perform the references discovery
+		return nil
 	}
 
 	// At this point the client knows what references the server is at, so it can send a
