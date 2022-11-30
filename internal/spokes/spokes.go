@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -29,20 +30,41 @@ const (
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
-	input    io.Reader
-	output   io.Writer
-	err      io.Writer
-	repoPath string
+	input         io.Reader
+	output        io.Writer
+	err           io.Writer
+	repoPath      string
+	statelessRPC  bool
+	advertiseRefs bool
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, err io.Writer, repoPath string) *SpokesReceivePack {
-	return &SpokesReceivePack{
-		input:    input,
-		output:   output,
-		err:      err,
-		repoPath: repoPath,
+func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string) (*SpokesReceivePack, error) {
+	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
+	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
+	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
+	flag.Parse()
+
+	var repoPath string
+	switch len(args) {
+	case 1:
+		repoPath = args[0]
+	case 2:
+		repoPath = args[1]
+	case 3:
+		repoPath = args[2]
+	default:
+		return nil, fmt.Errorf("Unexpected number of args (%d). %s are not the expected args ", len(args), args)
 	}
+
+	return &SpokesReceivePack{
+		input:         input,
+		output:        output,
+		err:           err,
+		repoPath:      repoPath,
+		statelessRPC:  *statelessRPC,
+		advertiseRefs: *httpBackendInfoRefs,
+	}, nil
 }
 
 // Execute executes our custom implementation
