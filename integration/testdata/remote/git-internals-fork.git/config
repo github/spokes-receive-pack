@@ -1,0 +1,8 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+	ignorecase = true
+	precomposeunicode = true
+[remote "origin"]
+	url = file:///Users/migue/development/sourcecode/github/spokes-receive-pack/integration/testdata/remote/git-internals.git
