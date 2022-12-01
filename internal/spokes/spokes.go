@@ -238,7 +238,7 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 		return "", fmt.Errorf("alternates and repo are not in the same parent directory")
 	}
 
-	return alternates, nil
+	return filepath.Dir(alternates), nil
 }
 
 // isHiddenRef determines if the line passed as the first argument belongs to the list of
