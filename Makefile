@@ -15,7 +15,8 @@ CLEAN :=
 
 # Generic Go binaries
 GO_BINARIES := \
-	$(BIN)/spokes-receive-pack-wrapper
+	$(BIN)/spokes-receive-pack-wrapper \
+	$(BIN)/spokes-receive-pack-networked-wrapper
 
 EXECUTABLES := \
 	$(BIN)/spokes-receive-pack
