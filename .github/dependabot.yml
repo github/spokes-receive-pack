@@ -5,3 +5,7 @@ updates:
   directory: "/"
   schedule:
     interval: daily
+  allow:
+    # Allow updates for GitHub-owned actions
+    - dependency-name: "actions/*"
+    - dependency-name: "github/*"
