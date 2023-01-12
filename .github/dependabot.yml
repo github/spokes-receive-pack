@@ -4,8 +4,12 @@ updates:
 - package-ecosystem: github-actions
   directory: "/"
   schedule:
-    interval: daily
+    interval: weekly
   allow:
     # Allow updates for GitHub-owned actions
     - dependency-name: "actions/*"
     - dependency-name: "github/*"
+- package-ecosystem: gomod
+  directory: "/"
+  schedule:
+    interval: weekly
