@@ -1,0 +1,11 @@
+---
+version: 2
+updates:
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: daily
+  allow:
+    # Allow updates for GitHub-owned actions
+    - dependency-name: "actions/*"
+    - dependency-name: "github/*"
