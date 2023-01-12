@@ -3,12 +3,6 @@ name: go test
 on:
   push:
 
-env:
-  GOPROXY: https://goproxy.githubapp.com/mod,https://proxy.golang.org,direct
-  GOPRIVATE: ''
-  GONOPROXY: ''
-  GONOSUMDB: github.com/github/*
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,9 +12,6 @@ jobs:
       - uses: actions/setup-go@v3
         with:
           go-version: "1.19"
-      - name: Authenticate with goproxy.
-        run: |
-          echo "machine goproxy.githubapp.com login nobody password ${{ secrets.GOPROXY_TOKEN }}" >> $HOME/.netrc
       - name: Vendor modules for later steps.
         run: |
           go mod vendor
