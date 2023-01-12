@@ -21,7 +21,7 @@ func main() {
 
 func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	ctx := context.Background()
-	if os.Getenv(GitSockstatVarSpokesQuarantine) != "true" {
+	if os.Getenv(GitSockstatVarSpokesQuarantine) != "bool:true" {
 		rp := receivepack.NewReceivePack(stdin, stdout, stderr, args)
 		if err := rp.Execute(ctx); err != nil {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
