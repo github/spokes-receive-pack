@@ -175,3 +175,8 @@ func (c Capabilities) Get(cap string) (Capability, bool) {
 	capability, found := c.caps[cap]
 	return capability, found
 }
+
+func (c Capabilities) IsDefined(cap string) bool {
+	_, found := c.caps[cap]
+	return found
+}

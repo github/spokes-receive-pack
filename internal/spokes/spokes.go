@@ -116,8 +116,10 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		}
 	}
 
-	if err := r.report(ctx, unpackErr == nil, commands); err != nil {
-		return err
+	if capabilities.IsDefined(pktline.ReportStatus) {
+		if err := r.report(ctx, unpackErr == nil, commands); err != nil {
+			return err
+		}
 	}
 
 	return nil
