@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic"
+	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic object-format=sha1"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
