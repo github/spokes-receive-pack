@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic"
+	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic object-format=sha1"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
@@ -33,13 +33,14 @@ type SpokesReceivePack struct {
 	input         io.Reader
 	output        io.Writer
 	err           io.Writer
+	capabilities  string
 	repoPath      string
 	statelessRPC  bool
 	advertiseRefs bool
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string) (*SpokesReceivePack, error) {
+func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string, version string) (*SpokesReceivePack, error) {
 	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
 	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
 	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
@@ -54,6 +55,7 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string)
 		input:         input,
 		output:        output,
 		err:           err,
+		capabilities:  capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
 		repoPath:      repoPath,
 		statelessRPC:  *statelessRPC,
 		advertiseRefs: *httpBackendInfoRefs,
@@ -190,7 +192,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	if len(references) > 0 {
-		if err := writePacketf(r.output, "%s\x00%s\n", references[0], capabilities); err != nil {
+		if err := writePacketf(r.output, "%s\x00%s\n", references[0], r.capabilities); err != nil {
 			return fmt.Errorf("writing capability packet: %w", err)
 		}
 
@@ -200,7 +202,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			}
 		}
 	} else {
-		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, capabilities); err != nil {
+		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, r.capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}

@@ -12,6 +12,8 @@ import (
 
 const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
 
+var BuildVersion string
+
 func main() {
 	if err := mainImpl(os.Stdin, os.Stdout, os.Stderr, os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -27,7 +29,7 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
 		}
 	} else {
-		rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args)
+		rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args, BuildVersion)
 		if err != nil {
 			return err
 		}
