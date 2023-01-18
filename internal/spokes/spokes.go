@@ -353,14 +353,21 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		return nil
 	}
 
+	args := []string{"index-pack", "--fix-thin", "--stdin", "-v"}
+
+	fsck, err := r.checkFsckConfig()
+	if err != nil {
+		return err
+	}
+
+	if fsck {
+		args = append(args, "--strict")
+	}
 	// Index-pack will read directly from our input!
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
-		"index-pack",
-		"--fix-thin",
-		"--stdin",
-		"-v",
+		args...,
 	)
 
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
@@ -397,6 +404,24 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	}
 
 	return nil
+}
+
+func (r *SpokesReceivePack) checkFsckConfig() (bool, error) {
+	receiveFsck, err := config.GetConfig(r.repoPath, "receive.fsckObjects")
+	if err != nil {
+		return false, err
+	}
+	transferFsck, err := config.GetConfig(r.repoPath, "transfer.fsckObjects")
+	if err != nil {
+		return false, err
+	}
+
+	lenReceiveFsck := len(receiveFsck.Entries)
+	lenTransferFsck := len(transferFsck.Entries)
+	if (lenReceiveFsck >= 1 && receiveFsck.Entries[lenReceiveFsck-1].Value == "true") || (lenTransferFsck >= 1 && transferFsck.Entries[lenTransferFsck-1].Value == "true") {
+		return true, nil
+	}
+	return false, nil
 }
 
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
