@@ -60,3 +60,42 @@ func TestGetConfigMultipleValues(t *testing.T) {
 	assert.Equal(t, config.Entries[1].Value, "refs/gh/")
 	assert.Equal(t, config.Entries[2].Value, "refs/__gh__")
 }
+
+func TestGetConfigEntryValues(t *testing.T) {
+	localRepo, err := os.MkdirTemp("", "repo")
+	defer os.RemoveAll(localRepo)
+
+	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
+	assert.NoError(t, os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	// init and config the local Git repo
+	assert.NoError(t, exec.Command("git", "init").Run())
+	assert.NoError(t, exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, exec.Command("git", "config", "receive.fsckObjects", "true").Run())
+	assert.NoError(t, exec.Command("git", "config", "receive.maxsize", "11").Run())
+
+	fsckObjects := GetConfigEntryValue(localRepo, "receive.fsckObjects")
+	assert.Equal(t, "true", fsckObjects)
+	maxSize := GetConfigEntryValue(localRepo, "receive.maxsize")
+	assert.Equal(t, "11", maxSize)
+}
+
+func TestGetConfigEntryMultipleValues(t *testing.T) {
+	localRepo, err := os.MkdirTemp("", "repo")
+	defer os.RemoveAll(localRepo)
+
+	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
+	assert.NoError(t, os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	// init and config the local Git repo
+	assert.NoError(t, exec.Command("git", "init").Run())
+	assert.NoError(t, exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, exec.Command("git", "config", "receive.multivalue", "a").Run())
+	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "b").Run())
+	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "c").Run())
+
+	fsckObjects := GetConfigEntryValue(localRepo, "receive.multivalue")
+	assert.Equal(t, "c", fsckObjects)
+}

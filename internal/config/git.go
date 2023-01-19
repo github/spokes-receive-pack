@@ -51,8 +51,9 @@ func GetConfig(repo string, prefix string) (*Config, error) {
 		return nil, fmt.Errorf("reading git configuration: %w", err)
 	}
 
+	loweredPrefix := strings.ToLower(prefix)
 	config := Config{
-		Prefix: prefix,
+		Prefix: loweredPrefix,
 	}
 
 	for len(out) > 0 {
@@ -69,7 +70,7 @@ func GetConfig(repo string, prefix string) (*Config, error) {
 		value := string(out[:valueEnd])
 		out = out[valueEnd+1:]
 
-		ok, rest := configKeyMatchesPrefix(key, prefix)
+		ok, rest := configKeyMatchesPrefix(key, loweredPrefix)
 		if !ok {
 			continue
 		}
@@ -82,6 +83,21 @@ func GetConfig(repo string, prefix string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+// GetConfigEntryValue returns the last entry in the list for the request config setting or an empty string in case
+// it cannot be found
+func GetConfigEntryValue(repo string, prefix string) string {
+	value, err := GetConfig(repo, prefix)
+	if err != nil {
+		return ""
+	}
+
+	if len(value.Entries) >= 1 {
+		return value.Entries[len(value.Entries)-1].Value
+	}
+
+	return ""
 }
 
 // configKeyMatchesPrefix checks whether `key` starts with `prefix` at
