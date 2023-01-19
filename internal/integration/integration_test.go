@@ -102,6 +102,20 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithExtraReceiveOptions() {
+	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
+	// This value is the default value we set in our production config
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "2147483648").Run())
+
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(
+		suite.T(),
+		exec.Command(
+			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
+		"unexpected error running the push with the custom spokes-receive-pack program")
+}
+
 func TestSpokesReceivePackTestSuite(t *testing.T) {
 	suite.Run(t, new(SpokesReceivePackTestSuite))
 }
