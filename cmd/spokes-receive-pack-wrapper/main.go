@@ -13,7 +13,7 @@ import (
 // binary during our integration tests
 func main() {
 	env := []string{
-		"GIT_SOCKSTAT_VAR_spokes_quarantine=true",
+		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 		"GIT_SOCKSTAT_VAR_quarantine_dir=objects/quarantine",
 	}
 	if err := integration.RunMain(env); err != nil {
