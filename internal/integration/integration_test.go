@@ -122,11 +122,13 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMa
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "1").Run())
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	out, err := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").CombinedOutput()
 	assert.Error(
 		suite.T(),
-		exec.Command(
-			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
+		err,
 		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+	outString := string(out)
+	assert.Contains(suite.T(), outString, "remote: fatal: pack exceeds maximum allowed size")
 }
 
 func TestSpokesReceivePackTestSuite(t *testing.T) {
