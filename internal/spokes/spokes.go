@@ -414,6 +414,10 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		_ = eg.Wait()
 	}
 
+	if waitErr := cmd.Wait(); waitErr != nil {
+		return waitErr
+	}
+
 	return nil
 }
 
