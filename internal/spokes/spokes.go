@@ -420,7 +420,7 @@ func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
 	receiveFsck := config.GetConfigEntryValue(r.repoPath, "receive.fsckObjects")
 	transferFsck := config.GetConfigEntryValue(r.repoPath, "transfer.fsckObjects")
 
-	if receiveFsck != "true" || transferFsck != "true" {
+	if receiveFsck == "true" || transferFsck == "true" {
 		return true
 	}
 
