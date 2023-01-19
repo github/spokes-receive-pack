@@ -356,12 +356,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	args := []string{"index-pack", "--fix-thin", "--stdin", "-v"}
 
-	fsck, err := r.checkFsckConfig()
-	if err != nil {
-		return err
-	}
-
-	if fsck {
+	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
 	}
 
@@ -421,32 +416,22 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	return nil
 }
 
-func (r *SpokesReceivePack) checkFsckConfig() (bool, error) {
-	receiveFsck, err := config.GetConfig(r.repoPath, "receive.fsckObjects")
-	if err != nil {
-		return false, err
-	}
-	transferFsck, err := config.GetConfig(r.repoPath, "transfer.fsckObjects")
-	if err != nil {
-		return false, err
+func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
+	receiveFsck := config.GetConfigEntryValue(r.repoPath, "receive.fsckObjects")
+	transferFsck := config.GetConfigEntryValue(r.repoPath, "transfer.fsckObjects")
+
+	if receiveFsck != "true" || transferFsck != "true" {
+		return true
 	}
 
-	lenReceiveFsck := len(receiveFsck.Entries)
-	lenTransferFsck := len(transferFsck.Entries)
-	if (lenReceiveFsck >= 1 && receiveFsck.Entries[lenReceiveFsck-1].Value == "true") || (lenTransferFsck >= 1 && transferFsck.Entries[lenTransferFsck-1].Value == "true") {
-		return true, nil
-	}
-	return false, nil
+	return false
 }
 
 func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
-	maxSize, err := config.GetConfig(r.repoPath, "receive.maxsize")
-	if err != nil {
-		return 0, err
-	}
+	maxSize := config.GetConfigEntryValue(r.repoPath, "receive.maxsize")
 
-	if len(maxSize.Entries) >= 1 {
-		return strconv.Atoi(maxSize.Entries[len(maxSize.Entries)-1].Value)
+	if maxSize != "" {
+		return strconv.Atoi(maxSize)
 	}
 
 	return 0, nil
