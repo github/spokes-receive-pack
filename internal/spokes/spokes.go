@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -363,6 +364,16 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	if fsck {
 		args = append(args, "--strict")
 	}
+
+	maxSize, err := r.getMaxInputSize()
+	if err != nil {
+		return err
+	}
+
+	if maxSize > 0 {
+		args = append(args, fmt.Sprintf("--max-input-size=%d", maxSize))
+	}
+
 	// Index-pack will read directly from our input!
 	cmd := exec.CommandContext(
 		ctx,
@@ -422,6 +433,19 @@ func (r *SpokesReceivePack) checkFsckConfig() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
+	maxSize, err := config.GetConfig(r.repoPath, "receive.maxsize")
+	if err != nil {
+		return 0, err
+	}
+
+	if len(maxSize.Entries) >= 1 {
+		return strconv.Atoi(maxSize.Entries[len(maxSize.Entries)-1].Value)
+	}
+
+	return 0, nil
 }
 
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
