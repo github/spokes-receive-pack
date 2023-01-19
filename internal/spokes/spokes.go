@@ -382,7 +382,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	)
 
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		if err := os.Mkdir(quarantine, 0700); err != nil {
+		if err := os.MkdirAll(quarantine, 0700); err != nil {
 			return err
 		}
 		file := fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano())
