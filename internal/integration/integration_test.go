@@ -119,6 +119,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithEx
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
 	// This value is the default value we set in our production config
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "2147483648").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "10").Run())
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
@@ -141,6 +142,21 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMa
 		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
 	outString := string(out)
 	assert.Contains(suite.T(), outString, "remote: fatal: pack exceeds maximum allowed size")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailRefUpdateCommandLimit() {
+	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	// Set a low value to receive.refupdatecommandlimit in order to make it fail
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "1").Run())
+
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	out, err := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").CombinedOutput()
+	assert.Error(
+		suite.T(),
+		err,
+		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+	outString := string(out)
+	assert.Contains(suite.T(), outString, "maximum ref updates exceeded")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsckObject() {
