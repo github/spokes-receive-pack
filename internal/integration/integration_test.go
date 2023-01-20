@@ -150,7 +150,15 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailRe
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "1").Run())
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
-	out, err := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").CombinedOutput()
+	out, err := exec.Command(
+		"git",
+		"push",
+		"--receive-pack=spokes-receive-pack-wrapper",
+		"r",
+		"branch-1",
+		"branch-2",
+		"branch-3").CombinedOutput()
+
 	assert.Error(
 		suite.T(),
 		err,
