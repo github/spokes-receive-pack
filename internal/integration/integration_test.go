@@ -150,6 +150,32 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsc
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 
+	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, out []byte) {
+		assert.Error(
+			suite.T(),
+			err,
+			"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+		outString := string(out)
+		assert.Contains(suite.T(), outString, "fatal: fsck error in packed object")
+	})
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceedFsckObject() {
+	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	// Disable the `receive.fsckObjects option
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "false").Run())
+
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+
+	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, _ []byte) {
+		assert.NoError(
+			suite.T(),
+			err,
+			"unexpected error running the push with the custom spokes-receive-pack program; it should have succeed since fsck is disabled")
+	})
+}
+
+func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
 	// let's create an invalid object
 	p := pipe.New(pipe.WithDir(suite.localRepo))
 	p.Add(
@@ -191,12 +217,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsc
 					"r",
 					fmt.Sprintf("%s:refs/heads/bogus", string(line))).CombinedOutput()
 
-				assert.Error(
-					suite.T(),
-					err,
-					"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
-				outString := string(out)
-				assert.Contains(suite.T(), outString, "fatal: fsck error in packed object")
+				validations(suite, err, out)
 				return nil
 			},
 		),
