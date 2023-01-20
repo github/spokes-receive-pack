@@ -369,6 +369,15 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args = append(args, fmt.Sprintf("--max-input-size=%d", maxSize))
 	}
 
+	warnObjectSize, err := r.getWarnObjectSize()
+	if err != nil {
+		return err
+	}
+
+	if warnObjectSize > 0 {
+		args = append(args, fmt.Sprintf("--warn-object-size=%d", warnObjectSize))
+	}
+
 	// Index-pack will read directly from our input!
 	cmd := exec.CommandContext(
 		ctx,
@@ -432,6 +441,16 @@ func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
 
 	if maxSize != "" {
 		return strconv.Atoi(maxSize)
+	}
+
+	return 0, nil
+}
+
+func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
+	warnObjectSize := config.GetConfigEntryValue(r.repoPath, "receive.warnobjectsize")
+
+	if warnObjectSize != "" {
+		return strconv.Atoi(warnObjectSize)
 	}
 
 	return 0, nil
