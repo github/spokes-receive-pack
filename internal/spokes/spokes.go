@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -353,18 +354,30 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		return nil
 	}
 
+	args := []string{"index-pack", "--fix-thin", "--stdin", "-v"}
+
+	if r.isFsckConfigEnabled() {
+		args = append(args, "--strict")
+	}
+
+	maxSize, err := r.getMaxInputSize()
+	if err != nil {
+		return err
+	}
+
+	if maxSize > 0 {
+		args = append(args, fmt.Sprintf("--max-input-size=%d", maxSize))
+	}
+
 	// Index-pack will read directly from our input!
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
-		"index-pack",
-		"--fix-thin",
-		"--stdin",
-		"-v",
+		args...,
 	)
 
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		if err := os.Mkdir(quarantine, 0700); err != nil {
+		if err := os.MkdirAll(quarantine, 0700); err != nil {
 			return err
 		}
 		file := fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano())
@@ -396,7 +409,32 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		_ = eg.Wait()
 	}
 
+	if waitErr := cmd.Wait(); waitErr != nil {
+		return waitErr
+	}
+
 	return nil
+}
+
+func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
+	receiveFsck := config.GetConfigEntryValue(r.repoPath, "receive.fsckObjects")
+	transferFsck := config.GetConfigEntryValue(r.repoPath, "transfer.fsckObjects")
+
+	if receiveFsck == "true" || transferFsck == "true" {
+		return true
+	}
+
+	return false
+}
+
+func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
+	maxSize := config.GetConfigEntryValue(r.repoPath, "receive.maxsize")
+
+	if maxSize != "" {
+		return strconv.Atoi(maxSize)
+	}
+
+	return 0, nil
 }
 
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
