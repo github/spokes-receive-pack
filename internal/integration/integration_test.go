@@ -3,15 +3,27 @@
 package integration
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"testing"
 
+	"github.com/github/go-pipe/pipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+const bogusCommit = `tree %s
+author Spokes Receive Pack 1234567890 +0000
+committer Spokes Receive Pack <spokes@receive.pack> 1234567890 +0000
+
+This commit object intentionally broken
+`
 
 type SpokesReceivePackTestSuite struct {
 	suite.Suite
@@ -129,6 +141,68 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMa
 		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
 	outString := string(out)
 	assert.Contains(suite.T(), outString, "remote: fatal: pack exceeds maximum allowed size")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsckObject() {
+	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	// Enable the `receive.fsckObjects option
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
+
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+
+	// let's create an invalid object
+	p := pipe.New(pipe.WithDir(suite.localRepo))
+	p.Add(
+		pipe.Command("git", "rev-parse", "HEAD^{tree}"),
+		pipe.LinewiseFunction(
+			"generate-bogus-tree-object",
+			func(_ context.Context, _ pipe.Env, line []byte, output *bufio.Writer) error {
+				output.WriteString(fmt.Sprintf(bogusCommit, string(line)))
+				return nil
+			},
+		),
+		pipe.Function(
+			"compute-hash",
+			func(_ context.Context, env pipe.Env, stdin io.Reader, stdout io.Writer) error {
+				cmd := exec.Command("git", "hash-object", "-t", "commit", "-w", "--stdin")
+
+				// write the bogus tree object to the stdin of the previous process
+				commit := make([]byte, 201)
+				n, err := stdin.Read(commit)
+				require.NoError(suite.T(), err)
+				b := bytes.Buffer{}
+				b.Write(commit[0:n])
+				cmd.Stdin = &b
+
+				// Pass the result (hash) to the next step in the pipe
+				hash, err := cmd.CombinedOutput()
+				require.NoError(suite.T(), err)
+				stdout.Write(hash)
+				return nil
+			},
+		),
+		pipe.LinewiseFunction(
+			"push-to-remote",
+			func(_ context.Context, _ pipe.Env, line []byte, _ *bufio.Writer) error {
+				out, err := exec.Command(
+					"git",
+					"push",
+					"--receive-pack=spokes-receive-pack-wrapper",
+					"r",
+					fmt.Sprintf("%s:refs/heads/bogus", string(line))).CombinedOutput()
+
+				assert.Error(
+					suite.T(),
+					err,
+					"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+				outString := string(out)
+				assert.Contains(suite.T(), outString, "fatal: fsck error in packed object")
+				return nil
+			},
+		),
+	)
+
+	p.Run(context.Background())
 }
 
 func TestSpokesReceivePackTestSuite(t *testing.T) {
