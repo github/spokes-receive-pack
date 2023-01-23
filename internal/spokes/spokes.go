@@ -340,6 +340,15 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.
 		return nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
 	}
 
+	updateCommandLimit, err := r.getRefUpdateCommandLimit()
+	if err != nil {
+		return nil, capabilities, err
+	}
+
+	if (updateCommandLimit > 0) && len(commands) > updateCommandLimit {
+		return nil, capabilities, fmt.Errorf("maximum ref updates exceeded: %d commands sent but max allowed is %d", len(commands), updateCommandLimit)
+	}
+
 	return commands, capabilities, nil
 }
 
@@ -451,6 +460,16 @@ func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
 
 	if warnObjectSize != "" {
 		return strconv.Atoi(warnObjectSize)
+	}
+
+	return 0, nil
+}
+
+func (r *SpokesReceivePack) getRefUpdateCommandLimit() (int, error) {
+	refUpdateCommandLimit := config.GetConfigEntryValue(r.repoPath, "receive.refupdatecommandlimit")
+
+	if refUpdateCommandLimit != "" {
+		return strconv.Atoi(refUpdateCommandLimit)
 	}
 
 	return 0, nil
