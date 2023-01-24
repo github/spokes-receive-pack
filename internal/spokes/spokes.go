@@ -109,11 +109,11 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	} else {
 		// We have successfully processed the pack-files, let's check their connectivity
 		if err := r.performCheckConnectivity(ctx, commands); err != nil {
-			for _, c := range commands {
-				if err := r.performCheckConnectivityOnObject(ctx, c.newOID); err != nil {
+			for i := range commands {
+				if err := r.performCheckConnectivityOnObject(ctx, commands[i].newOID); err != nil {
 					// Some references have missing objects, let's check them one by one to determine
 					// the ones actually failing
-					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					commands[i].err = fmt.Sprintf("missing required objects: %s", err.Error())
 				}
 			}
 		}
