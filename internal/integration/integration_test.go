@@ -120,6 +120,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithEx
 	// This value is the default value we set in our production config
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "2147483648").Run())
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "10").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.reportStatusFF", "true").Run())
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(

@@ -106,15 +106,33 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	if unpackErr := r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
+			commands[i].reportFF = "ng"
 		}
 	} else {
 		// We have successfully processed the pack-files, let's check their connectivity
-		if err := r.performCheckConnectivity(ctx, commands); err != nil {
-			for i := range commands {
-				if err := r.performCheckConnectivityOnObject(ctx, commands[i].newOID); err != nil {
-					// Some references have missing objects, let's check them one by one to determine
-					// the ones actually failing
-					commands[i].err = fmt.Sprintf("missing required objects: %s", err.Error())
+		err := r.performCheckConnectivity(ctx, commands)
+
+		// Let's check two different things for every single command:
+		// * If we found a general check-connectivity error, let's check every individual command
+		// * If no individual error has been found and the reportStatusFF settings is true, let's see if the reference update could be a fast-forward
+		for i := range commands {
+			var singleObjectErr error
+			c := &commands[i]
+			c.reportFF = "ok"
+			if err != nil {
+				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
+				if singleObjectErr != nil {
+					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					c.reportFF = "ng"
+				}
+			}
+
+			if singleObjectErr == nil && c.isUpdate() && r.isReportStatusFFConfigEnabled() {
+				// check if a fast-forward could be performed
+				if isFastForward(c, ctx) {
+					c.reportFF = "ff"
+				} else {
+					c.reportFF = "nf"
 				}
 			}
 		}
@@ -127,6 +145,23 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func isFastForward(c *command, ctx context.Context) bool {
+	cmd := exec.CommandContext(
+		ctx,
+		"git",
+		"merge-base",
+		"--is-ancestor",
+		c.oldOID,
+		c.newOID,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+
+	return true
 }
 
 // performReferenceDiscovery performs the reference discovery bits of the protocol
@@ -292,10 +327,15 @@ func writePacketf(w io.Writer, format string, a ...interface{}) error {
 }
 
 type command struct {
-	refname string
-	oldOID  string
-	newOID  string
-	err     string
+	refname  string
+	oldOID   string
+	newOID   string
+	err      string
+	reportFF string
+}
+
+func (c *command) isUpdate() bool {
+	return (c.oldOID != nullSHA1OID && c.oldOID != nullSHA256OID) && (c.newOID != nullSHA1OID && c.newOID != nullSHA256OID)
 }
 
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
@@ -441,6 +481,13 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	}
 
 	return nil
+}
+
+func (r *SpokesReceivePack) isReportStatusFFConfigEnabled() bool {
+	reportStatusFF := config.GetConfigEntryValue(r.repoPath, "receive.reportStatusFF")
+
+	return reportStatusFF == "true"
+
 }
 
 func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
@@ -633,7 +680,7 @@ func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 				return err
 			}
 		} else {
-			if err := writePacketf(&buf, "ok %s\n", c.refname); err != nil {
+			if err := writePacketf(&buf, "%s %s\n", c.reportFF, c.refname); err != nil {
 				return err
 			}
 		}
