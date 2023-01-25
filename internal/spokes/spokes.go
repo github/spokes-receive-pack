@@ -676,7 +676,7 @@ func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 	}
 	for _, c := range commands {
 		if c.err != "" {
-			if err := writePacketf(&buf, "%s %s %s\n", c.reportFF, c.refname, c.err); err != nil {
+			if err := writePacketf(&buf, "ng %s %s\n", c.refname, c.err); err != nil {
 				return err
 			}
 		} else {
