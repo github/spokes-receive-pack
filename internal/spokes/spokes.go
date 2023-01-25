@@ -31,13 +31,14 @@ const (
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
-	input         io.Reader
-	output        io.Writer
-	err           io.Writer
-	capabilities  string
-	repoPath      string
-	statelessRPC  bool
-	advertiseRefs bool
+	input            io.Reader
+	output           io.Writer
+	err              io.Writer
+	capabilities     string
+	repoPath         string
+	statelessRPC     bool
+	advertiseRefs    bool
+	quarantineFolder string
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
@@ -109,11 +110,11 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	} else {
 		// We have successfully processed the pack-files, let's check their connectivity
 		if err := r.performCheckConnectivity(ctx, commands); err != nil {
-			for _, c := range commands {
-				if err := r.performCheckConnectivityOnObject(ctx, c.newOID); err != nil {
+			for i := range commands {
+				if err := r.performCheckConnectivityOnObject(ctx, commands[i].newOID); err != nil {
 					// Some references have missing objects, let's check them one by one to determine
 					// the ones actually failing
-					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					commands[i].err = fmt.Sprintf("missing required objects: %s", err.Error())
 				}
 			}
 		}
@@ -395,11 +396,19 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	)
 
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		if err := os.MkdirAll(quarantine, 0700); err != nil {
+		packDir := fmt.Sprintf("%s/pack", quarantine)
+		if err := os.MkdirAll(packDir, 0700); err != nil {
 			return err
 		}
-		file := fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano())
-		cmd.Args = append(cmd.Args, filepath.Join(quarantine, file))
+
+		cmd.Args = append(
+			cmd.Args,
+			filepath.Join(
+				packDir,
+				fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
+			))
+
+		r.quarantineFolder = quarantine
 	}
 
 	// We want to discard stdout but forward stderr to `w`
@@ -519,6 +528,13 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 	return &eg, nil
 }
 
+func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
+	return []string{
+		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
+	}
+}
+
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
 // closed under reachability, stopping the traversal at any objects
 // reachable from the pre-existing reference values.
@@ -543,6 +559,7 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--alternate-refs",
 	)
 	cmd.Stderr = devNull
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
 	p.Add(
@@ -589,6 +606,7 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"--alternate-refs",
 		oid,
 	)
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
