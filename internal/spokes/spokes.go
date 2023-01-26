@@ -605,10 +605,15 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--all",
 		"--alternate-refs",
 	)
-	cmd.Stderr = devNull
+	// cmd.Stderr = devNull
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
+	errReader, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	outBuffer := new(bytes.Buffer)
 
-	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
+	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(outBuffer))
 	p.Add(
 		pipe.Function(
 			"write-new-values",
@@ -625,7 +630,11 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 				}
 
 				if err := w.Flush(); err != nil {
-					return fmt.Errorf("flushing stdin to 'rev-list': %w", err)
+					errOut, readError := io.ReadAll(errReader)
+					if readError != nil {
+						return readError
+					}
+					return fmt.Errorf("flushing stdin to 'rev-list': %w. Stdout details: %s. Stderr details: %s", err, outBuffer.String(), errOut)
 				}
 
 				return nil
@@ -655,8 +664,9 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 	)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("running 'rev-list' on oid %s: %s. Details: %s", oid, err, string(out))
 	}
 
 	return nil
