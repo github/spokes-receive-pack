@@ -624,6 +624,8 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		_, _ = outBuffer.WriteString(fmt.Sprintf("Env: %s\n", f))
 	}
 
+	outBuffer.WriteString(fmt.Sprintf("Command to be run: %s with spokes-receive-pack:%+v", cmd.String(), r))
+
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(outBuffer))
 	p.Add(
 		pipe.Function(
