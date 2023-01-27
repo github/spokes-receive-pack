@@ -435,6 +435,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
+	f, _ := os.Create(fmt.Sprintf("/tmp/quarantine-debug-%d.log", time.Now().UnixNano()))
 	quarantinePackDir := ""
 	quarantineDir := ""
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
@@ -457,6 +458,8 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		))
 
 	r.quarantineFolder = quarantineDir
+
+	f.WriteString(fmt.Sprintf("Quarantine folder is %s", r.quarantineFolder))
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -487,6 +490,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		return waitErr
 	}
 
+	f.WriteString(fmt.Sprintf("Returning %+v\n", r))
 	return nil
 }
 
