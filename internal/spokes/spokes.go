@@ -605,10 +605,10 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--all",
 		"--alternate-refs",
 	)
-	// cmd.Stderr = devNull
+	cmd.Stderr = devNull
 	objectsDir := r.getAlternateObjectDirsEnv()
 	cmd.Env = append(cmd.Env, objectsDir...)
-	errReader, err := cmd.StderrPipe()
+
 	if err != nil {
 		return err
 	}
@@ -637,9 +637,6 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 				if err := w.Flush(); err != nil {
 					return fmt.Errorf("flushing stdin to 'rev-list': %w", err)
 				}
-
-				errOut, readError := io.ReadAll(errReader)
-				outBuffer.WriteString(fmt.Sprintf("Stderr %s. Err:%s", errOut, readError))
 
 				return nil
 			},
