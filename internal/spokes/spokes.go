@@ -435,21 +435,28 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
+	quarantinePackDir := ""
+	quarantineDir := ""
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		packDir := fmt.Sprintf("%s/pack", quarantine)
-		if err := os.MkdirAll(packDir, 0700); err != nil {
-			return err
-		}
-
-		cmd.Args = append(
-			cmd.Args,
-			filepath.Join(
-				packDir,
-				fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
-			))
-
-		r.quarantineFolder = quarantine
+		quarantineDir = quarantine
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
+	} else {
+		quarantineDir = fmt.Sprintf("%s-%d", "default-quarantine", time.Now().UnixNano())
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
 	}
+
+	if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
+		return err
+	}
+
+	cmd.Args = append(
+		cmd.Args,
+		filepath.Join(
+			quarantinePackDir,
+			fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
+		))
+
+	r.quarantineFolder = quarantineDir
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -645,7 +652,9 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	)
 
 	if err := p.Run(ctx); err != nil {
-		return fmt.Errorf("running 'rev-list': %w. Details: %s", err, outBuffer.String())
+		wd, _ := os.Getwd()
+		outBuffer.WriteString(fmt.Sprintf("Working dir: %s", wd))
+		return fmt.Errorf("performCheckConnectivity error: %w. Details: %s", err, outBuffer.String())
 	}
 
 	return nil
