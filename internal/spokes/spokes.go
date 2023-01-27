@@ -606,12 +606,16 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--alternate-refs",
 	)
 	// cmd.Stderr = devNull
-	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
+	objectsDir := r.getAlternateObjectDirsEnv()
+	cmd.Env = append(cmd.Env, objectsDir...)
 	errReader, err := cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
 	outBuffer := new(bytes.Buffer)
+	for _, f := range objectsDir {
+		_, _ = outBuffer.WriteString(fmt.Sprintf("Env: %s\n", f))
+	}
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(outBuffer))
 	p.Add(
