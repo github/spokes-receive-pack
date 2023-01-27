@@ -627,11 +627,15 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
 						return fmt.Errorf("writing to 'rev-list' input: %w", err)
 					}
+					outBuffer.WriteString(fmt.Sprintf("Written %s to rev-list input\n", c.newOID))
 				}
 
 				if err := w.Flush(); err != nil {
 					return fmt.Errorf("flushing stdin to 'rev-list': %w", err)
 				}
+
+				errOut, readError := io.ReadAll(errReader)
+				outBuffer.WriteString(fmt.Sprintf("Stderr %s. Err:%s", errOut, readError))
 
 				return nil
 			},
@@ -640,8 +644,7 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	)
 
 	if err := p.Run(ctx); err != nil {
-		errOut, readError := io.ReadAll(errReader)
-		return fmt.Errorf("running 'rev-list': %w. Creating reader: %s. Stdout details: %s. Stderr details: %s", err, readError, outBuffer.String(), errOut)
+		return fmt.Errorf("running 'rev-list': %w. Details: %s", err, outBuffer.String())
 	}
 
 	return nil
