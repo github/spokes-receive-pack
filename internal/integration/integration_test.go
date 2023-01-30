@@ -27,7 +27,7 @@ This commit object intentionally broken
 
 type SpokesReceivePackTestSuite struct {
 	suite.Suite
-	localRepo, remoteRepo string
+	localRepo, remoteRepo, shallowClone string
 }
 
 func (suite *SpokesReceivePackTestSuite) SetupTest() {
@@ -74,9 +74,16 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 
 	req.NoError(exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run())
 
+	// create a clone of our local repo with --depth=1
+	shallowClone, err := os.MkdirTemp("", "shallow-clone")
+	req.NoError(err, "unable to create the shallow-clone repository directory")
+	req.NoError(exec.Command("git", "clone", "--depth=1", fmt.Sprintf("file://%s", localRepo), shallowClone).Run())
+
 	// store the state
 	suite.localRepo = localRepo
 	suite.remoteRepo = remoteRepo
+	suite.T().Logf("Created shallow clone at %s", shallowClone)
+	suite.shallowClone = shallowClone
 }
 
 func (suite *SpokesReceivePackTestSuite) TearDownTest() {
@@ -85,6 +92,7 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 	// Clean the environment before exiting
 	require.NoError(os.RemoveAll(suite.remoteRepo))
 	require.NoError(os.RemoveAll(suite.localRepo))
+	require.NoError(os.RemoveAll(suite.shallowClone))
 }
 
 func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
@@ -198,6 +206,17 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 			err,
 			"unexpected error running the push with the custom spokes-receive-pack program; it should have succeed since fsck is disabled")
 	})
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClone() {
+	assert.NoError(suite.T(), os.Chdir(suite.shallowClone), "unable to chdir into our local shallow clone")
+
+	out, err := exec.Command(
+		"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test").CombinedOutput()
+
+	suite.T().Logf("ERROR:%s", out)
+	require.NoError(suite.T(), err)
+
 }
 
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {

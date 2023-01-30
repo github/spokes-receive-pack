@@ -92,7 +92,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	//that it wants to update, it sends a line listing the obj-id currently on
 	//the server, the obj-id the client would like to update it to and the name
 	//of the reference.
-	commands, capabilities, err := r.readCommands(ctx)
+	commands, _, capabilities, err := r.readCommands(ctx)
 	if err != nil {
 		return err
 	}
@@ -355,8 +355,9 @@ func (c *command) isUpdate() bool {
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
-func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.Capabilities, error) {
+func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, pktline.Capabilities, error) {
 	var commands []command
+	var shallowInfo []string
 
 	first := true
 	pl := pktline.New()
@@ -364,28 +365,40 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.
 
 	hiddenRefs, err := r.getHiddenRefs()
 	if err != nil {
-		return []command{}, capabilities, err
+		return []command{}, nil, capabilities, err
 	}
 
 	for {
 		err := pl.Read(r.input)
 		if err != nil {
-			return nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
+			return nil, nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
 		}
 
 		if pl.IsFlush() {
 			break
 		}
 
+		// Parse the shallow "commands" the client could have sent
+
+		payload := string(pl.Payload)
+		if strings.HasPrefix(payload, "shallow") {
+			payloadParts := strings.Split(payload, " ")
+			if len(payloadParts) != 2 {
+				return nil, nil, pktline.Capabilities{}, fmt.Errorf("wrong shallow structure: %s", payload)
+			}
+			shallowInfo = append(shallowInfo, payloadParts[1])
+			continue
+		}
+
 		if first {
 			capabilities, err = pl.Capabilities()
 			if err != nil {
-				return nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
+				return nil, nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
 			}
 			first = false
 		}
 
-		if m := validReferenceName.FindStringSubmatch(string(pl.Payload)); m != nil {
+		if m := validReferenceName.FindStringSubmatch(payload); m != nil {
 			c := command{
 				oldOID:  m[1],
 				newOID:  m[2],
@@ -401,19 +414,19 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.
 			continue
 		}
 
-		return nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
+		return nil, nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
 	}
 
 	updateCommandLimit, err := r.getRefUpdateCommandLimit()
 	if err != nil {
-		return nil, capabilities, err
+		return nil, nil, capabilities, err
 	}
 
 	if (updateCommandLimit > 0) && len(commands) > updateCommandLimit {
-		return nil, capabilities, fmt.Errorf("maximum ref updates exceeded: %d commands sent but max allowed is %d", len(commands), updateCommandLimit)
+		return nil, nil, capabilities, fmt.Errorf("maximum ref updates exceeded: %d commands sent but max allowed is %d", len(commands), updateCommandLimit)
 	}
 
-	return commands, capabilities, nil
+	return commands, shallowInfo, capabilities, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
@@ -608,7 +621,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
 	return []string{
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s:%s", filepath.Join(r.repoPath, "objects"), filepath.Join(r.repoPath, ".git/objects")),
 	}
 }
 
@@ -646,9 +659,6 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	objectsDir := r.getAlternateObjectDirsEnv()
 	cmd.Env = append(cmd.Env, objectsDir...)
 
-	if err != nil {
-		return err
-	}
 	outBuffer := new(bytes.Buffer)
 	for _, f := range objectsDir {
 		_, _ = outBuffer.WriteString(fmt.Sprintf("Env: %s\n", f))
