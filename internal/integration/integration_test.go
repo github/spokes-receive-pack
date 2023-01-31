@@ -99,7 +99,7 @@ func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
 	assert.NoError(
 		suite.T(),
 		exec.Command(
-			"git", "push", "--receive-pack=spokes-receive-pack", "r", "master").Run(),
+			"git", "push", "--receive-pack=spokes-receive-pack", "r", "HEAD").Run(),
 		"unexpected error running the push with the default receive-pack implementation")
 }
 
@@ -108,7 +108,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
 	assert.NoError(
 		suite.T(),
 		exec.Command(
-			"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "master").Run(),
+			"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD").Run(),
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 
