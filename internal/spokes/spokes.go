@@ -474,13 +474,15 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
 		quarantineDir = quarantine
 		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
+		if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
+			return err
+		}
 	} else {
-		quarantineDir = fmt.Sprintf("%s-%d", "default-quarantine", time.Now().UnixNano())
+		quarantineDir, err = os.MkdirTemp(".", "default-quarantine")
+		if err != nil {
+			return err
+		}
 		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
-	}
-
-	if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
-		return err
 	}
 
 	cmd.Args = append(
