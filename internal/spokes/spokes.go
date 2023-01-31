@@ -117,7 +117,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		// * If no individual error has been found and the reportStatusFF settings is true, let's see if the reference update could be a fast-forward
 		for i := range commands {
 			c := &commands[i]
-			if c.rejected {
+			if c.err != "" {
 				continue
 			}
 			var singleObjectErr error
@@ -346,7 +346,6 @@ type command struct {
 	newOID   string
 	err      string
 	reportFF string
-	rejected bool
 }
 
 func (c *command) isUpdate() bool {
@@ -407,7 +406,6 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 			if isHiddenRef(c.refname, hiddenRefs) {
 				c.reportFF = "ng"
 				c.err = "deny updating a hidden ref"
-				c.rejected = true
 			}
 
 			commands = append(commands, c)
@@ -694,7 +692,7 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 func filterNonRejectedCommands(commands []command) []command {
 	var nonRejectedCommands []command
 	for _, c := range commands {
-		if !c.rejected {
+		if c.err != "" {
 			nonRejectedCommands = append(nonRejectedCommands, c)
 		}
 	}
