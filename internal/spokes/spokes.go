@@ -117,24 +117,25 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		// * If no individual error has been found and the reportStatusFF settings is true, let's see if the reference update could be a fast-forward
 		for i := range commands {
 			c := &commands[i]
-			if !c.rejected {
-				var singleObjectErr error
-				c.reportFF = "ok"
-				if err != nil {
-					singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
-					if singleObjectErr != nil {
-						c.err = fmt.Sprintf("missing required objects: %s", err.Error())
-						c.reportFF = "ng"
-					}
+			if c.rejected {
+				continue
+			}
+			var singleObjectErr error
+			c.reportFF = "ok"
+			if err != nil {
+				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
+				if singleObjectErr != nil {
+					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					c.reportFF = "ng"
 				}
+			}
 
-				if singleObjectErr == nil && c.isUpdate() && r.isReportStatusFFConfigEnabled() {
-					// check if a fast-forward could be performed
-					if isFastForward(c, ctx) {
-						c.reportFF = "ff"
-					} else {
-						c.reportFF = "nf"
-					}
+			if singleObjectErr == nil && c.isUpdate() && r.isReportStatusFFConfigEnabled() {
+				// check if a fast-forward could be performed
+				if isFastForward(c, ctx) {
+					c.reportFF = "ff"
+				} else {
+					c.reportFF = "nf"
 				}
 			}
 		}
