@@ -65,7 +65,7 @@ test-integration: BUILDTAGS=-tags integration
 test-integration: all go-binaries go-test-integration
 
 TESTFLAGS := -race
-TESTINTEGRATIONFLAGS := $(TESTFLAGS) --tags=integration
+TESTINTEGRATIONFLAGS := $(TESTFLAGS) --tags=integration --count=1
 TESTSUITE := ./...
 .PHONY: go-test
 go-test:

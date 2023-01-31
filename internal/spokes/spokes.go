@@ -379,7 +379,6 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 		}
 
 		// Parse the shallow "commands" the client could have sent
-
 		payload := string(pl.Payload)
 		if strings.HasPrefix(payload, "shallow") {
 			payloadParts := strings.Split(payload, " ")
