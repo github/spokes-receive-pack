@@ -448,21 +448,28 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
+	quarantinePackDir := ""
+	quarantineDir := ""
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		packDir := fmt.Sprintf("%s/pack", quarantine)
-		if err := os.MkdirAll(packDir, 0700); err != nil {
-			return err
-		}
-
-		cmd.Args = append(
-			cmd.Args,
-			filepath.Join(
-				packDir,
-				fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
-			))
-
-		r.quarantineFolder = quarantine
+		quarantineDir = quarantine
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
+	} else {
+		quarantineDir = fmt.Sprintf("%s-%d", "default-quarantine", time.Now().UnixNano())
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
 	}
+
+	if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
+		return err
+	}
+
+	cmd.Args = append(
+		cmd.Args,
+		filepath.Join(
+			quarantinePackDir,
+			fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
+		))
+
+	r.quarantineFolder = quarantineDir
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -591,7 +598,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
 	return []string{
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s:%s", filepath.Join(r.repoPath, "objects"), filepath.Join(r.repoPath, ".git/objects")),
 	}
 }
 
