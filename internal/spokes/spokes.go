@@ -715,8 +715,9 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 	)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("performCheckConnectivityOnObject on oid %s: %s. Details: %s", oid, err, string(out))
 	}
 
 	return nil
