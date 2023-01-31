@@ -103,7 +103,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr := r.readPack(ctx, commands, capabilities); unpackErr != nil {
+	if unpackErr = r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 			commands[i].reportFF = "ng"
