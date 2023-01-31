@@ -92,7 +92,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	//that it wants to update, it sends a line listing the obj-id currently on
 	//the server, the obj-id the client would like to update it to and the name
 	//of the reference.
-	commands, capabilities, err := r.readCommands(ctx)
+	commands, _, capabilities, err := r.readCommands(ctx)
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr := r.readPack(ctx, commands, capabilities); unpackErr != nil {
+	if unpackErr = r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 			commands[i].reportFF = "ng"
@@ -116,8 +116,11 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		// * If we found a general check-connectivity error, let's check every individual command
 		// * If no individual error has been found and the reportStatusFF settings is true, let's see if the reference update could be a fast-forward
 		for i := range commands {
-			var singleObjectErr error
 			c := &commands[i]
+			if c.err != "" {
+				continue
+			}
+			var singleObjectErr error
 			c.reportFF = "ok"
 			if err != nil {
 				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
@@ -168,7 +171,7 @@ func isFastForward(c *command, ctx context.Context) bool {
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
-	config, err := config.GetConfig(r.repoPath, "receive.hiderefs")
+	hiddenRefs, err := r.getHiddenRefs()
 	if err != nil {
 		return err
 	}
@@ -181,7 +184,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			"collect-references",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
 				// Ignore the current line if it is a hidden ref
-				if !isHiddenRef(line, config.Entries) {
+				if !isHiddenRef(string(line), hiddenRefs) {
 					references = append(references, line)
 				}
 
@@ -213,7 +216,7 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 					"collect-alternates-references",
 					func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
 						// Ignore the current line if it is a hidden ref
-						if !isHiddenRef(line, config.Entries) {
+						if !isHiddenRef(string(line), hiddenRefs) {
 							references = append(references, line)
 						}
 
@@ -251,6 +254,18 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	return nil
 }
 
+func (r *SpokesReceivePack) getHiddenRefs() ([]string, error) {
+	config, err := config.GetConfig(r.repoPath, "receive.hiderefs")
+	if err != nil {
+		return nil, err
+	}
+	var hiddenRefs []string
+	for _, hr := range config.Entries {
+		hiddenRefs = append(hiddenRefs, hr.Value)
+	}
+	return hiddenRefs, nil
+}
+
 func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 	alternatesPath := filepath.Join(r.repoPath, "objects", "info", "alternates")
 	alternatesBytes, err := os.ReadFile(alternatesPath)
@@ -285,10 +300,9 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 // isHiddenRef determines if the line passed as the first argument belongs to the list of
 // potential references that we don't want to advertise
 // This method assumes the config entries passed as a second argument are the ones in the `receive.hiderefs` section
-func isHiddenRef(line []byte, entries []config.ConfigEntry) bool {
-	l := string(line)
-	for _, entry := range entries {
-		if strings.Contains(l, entry.Value) {
+func isHiddenRef(line string, hiddenRefs []string) bool {
+	for _, hr := range hiddenRefs {
+		if strings.Contains(line, hr) {
 			return true
 		}
 	}
@@ -341,56 +355,76 @@ func (c *command) isUpdate() bool {
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
-func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, pktline.Capabilities, error) {
+func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, pktline.Capabilities, error) {
 	var commands []command
+	var shallowInfo []string
 
 	first := true
 	pl := pktline.New()
 	var capabilities pktline.Capabilities
 
+	hiddenRefs, err := r.getHiddenRefs()
+	if err != nil {
+		return []command{}, nil, capabilities, err
+	}
+
 	for {
 		err := pl.Read(r.input)
 		if err != nil {
-			return nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
+			return nil, nil, pktline.Capabilities{}, fmt.Errorf("reading commands: %w", err)
 		}
 
 		if pl.IsFlush() {
 			break
 		}
 
+		// Parse the shallow "commands" the client could have sent
+		payload := string(pl.Payload)
+		if strings.HasPrefix(payload, "shallow") {
+			payloadParts := strings.Split(payload, " ")
+			if len(payloadParts) != 2 {
+				return nil, nil, pktline.Capabilities{}, fmt.Errorf("wrong shallow structure: %s", payload)
+			}
+			shallowInfo = append(shallowInfo, payloadParts[1])
+			continue
+		}
+
 		if first {
 			capabilities, err = pl.Capabilities()
 			if err != nil {
-				return nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
+				return nil, nil, capabilities, fmt.Errorf("processing capabilities: %w", err)
 			}
 			first = false
 		}
 
-		if m := validReferenceName.FindStringSubmatch(string(pl.Payload)); m != nil {
-			commands = append(
-				commands,
-				command{
-					oldOID:  m[1],
-					newOID:  m[2],
-					refname: m[3],
-				},
-			)
+		if m := validReferenceName.FindStringSubmatch(payload); m != nil {
+			c := command{
+				oldOID:  m[1],
+				newOID:  m[2],
+				refname: m[3],
+			}
+			if isHiddenRef(c.refname, hiddenRefs) {
+				c.reportFF = "ng"
+				c.err = "deny updating a hidden ref"
+			}
+
+			commands = append(commands, c)
 			continue
 		}
 
-		return nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
+		return nil, nil, capabilities, fmt.Errorf("bogus command: %s", pl.Payload)
 	}
 
 	updateCommandLimit, err := r.getRefUpdateCommandLimit()
 	if err != nil {
-		return nil, capabilities, err
+		return nil, nil, capabilities, err
 	}
 
 	if (updateCommandLimit > 0) && len(commands) > updateCommandLimit {
-		return nil, capabilities, fmt.Errorf("maximum ref updates exceeded: %d commands sent but max allowed is %d", len(commands), updateCommandLimit)
+		return nil, nil, capabilities, fmt.Errorf("maximum ref updates exceeded: %d commands sent but max allowed is %d", len(commands), updateCommandLimit)
 	}
 
-	return commands, capabilities, nil
+	return commands, shallowInfo, capabilities, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
@@ -435,21 +469,30 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
+	quarantinePackDir := ""
+	quarantineDir := ""
 	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		packDir := fmt.Sprintf("%s/pack", quarantine)
-		if err := os.MkdirAll(packDir, 0700); err != nil {
+		quarantineDir = quarantine
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
+		if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
 			return err
 		}
-
-		cmd.Args = append(
-			cmd.Args,
-			filepath.Join(
-				packDir,
-				fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
-			))
-
-		r.quarantineFolder = quarantine
+	} else {
+		quarantineDir, err = os.MkdirTemp(".", "default-quarantine")
+		if err != nil {
+			return err
+		}
+		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
 	}
+
+	cmd.Args = append(
+		cmd.Args,
+		filepath.Join(
+			quarantinePackDir,
+			fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
+		))
+
+	r.quarantineFolder = quarantineDir
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -578,7 +621,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
 	return []string{
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s:%s", filepath.Join(r.repoPath, "objects"), filepath.Join(r.repoPath, ".git/objects")),
 	}
 }
 
@@ -586,6 +629,13 @@ func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
 // closed under reachability, stopping the traversal at any objects
 // reachable from the pre-existing reference values.
 func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
+	nonRejectedCommands := filterNonRejectedCommands(commands)
+	if len(nonRejectedCommands) == 0 {
+		// all the commands have been previously rejected so there is no need to perform
+		// a connectivity check
+		return nil
+	}
+
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", os.DevNull, err)
@@ -635,10 +685,20 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	)
 
 	if err := p.Run(ctx); err != nil {
-		return fmt.Errorf("running 'rev-list': %w", err)
+		return fmt.Errorf("performCheckConnectivity error: %w", err)
 	}
 
 	return nil
+}
+
+func filterNonRejectedCommands(commands []command) []command {
+	var nonRejectedCommands []command
+	for _, c := range commands {
+		if c.err != "" {
+			nonRejectedCommands = append(nonRejectedCommands, c)
+		}
+	}
+	return nonRejectedCommands
 }
 
 func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
@@ -655,8 +715,9 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 	)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running 'rev-list' on oid %s: %s", oid, err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("performCheckConnectivityOnObject on oid %s: %s. Details: %s", oid, err, string(out))
 	}
 
 	return nil
