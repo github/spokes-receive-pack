@@ -487,11 +487,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			return err
 		}
 	} else {
-		quarantineDir, err = os.MkdirTemp(".", "default-quarantine")
-		if err != nil {
-			return err
-		}
-		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
+		os.Exit(-1)
 	}
 
 	cmd.Args = append(
