@@ -309,9 +309,9 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 // isHiddenRef determines if the line passed as the first argument belongs to the list of
 // potential references that we don't want to advertise
 // This method assumes the config entries passed as a second argument are the ones in the `receive.hiderefs` section
-func isHiddenRef(line string, hiddenRefs []string) bool {
+func isHiddenRef(ref string, hiddenRefs []string) bool {
 	for _, hr := range hiddenRefs {
-		if strings.Contains(line, hr) {
+		if strings.HasPrefix(ref, hr) {
 			return true
 		}
 	}
