@@ -255,12 +255,21 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 }
 
 func (r *SpokesReceivePack) getHiddenRefs() ([]string, error) {
-	config, err := config.GetConfig(r.repoPath, "receive.hiderefs")
+	c, err := config.GetConfig(r.repoPath, "receive.hiderefs")
 	if err != nil {
 		return nil, err
 	}
 	var hiddenRefs []string
-	for _, hr := range config.Entries {
+	for _, hr := range c.Entries {
+		hiddenRefs = append(hiddenRefs, hr.Value)
+	}
+
+	c, err = config.GetConfig(r.repoPath, "transfer.hiderefs")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, hr := range c.Entries {
 		hiddenRefs = append(hiddenRefs, hr.Value)
 	}
 	return hiddenRefs, nil
