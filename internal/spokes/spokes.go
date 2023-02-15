@@ -255,12 +255,21 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 }
 
 func (r *SpokesReceivePack) getHiddenRefs() ([]string, error) {
-	config, err := config.GetConfig(r.repoPath, "receive.hiderefs")
+	c, err := config.GetConfig(r.repoPath, "receive.hiderefs")
 	if err != nil {
 		return nil, err
 	}
 	var hiddenRefs []string
-	for _, hr := range config.Entries {
+	for _, hr := range c.Entries {
+		hiddenRefs = append(hiddenRefs, hr.Value)
+	}
+
+	c, err = config.GetConfig(r.repoPath, "transfer.hiderefs")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, hr := range c.Entries {
 		hiddenRefs = append(hiddenRefs, hr.Value)
 	}
 	return hiddenRefs, nil
@@ -300,9 +309,9 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 // isHiddenRef determines if the line passed as the first argument belongs to the list of
 // potential references that we don't want to advertise
 // This method assumes the config entries passed as a second argument are the ones in the `receive.hiderefs` section
-func isHiddenRef(line string, hiddenRefs []string) bool {
+func isHiddenRef(ref string, hiddenRefs []string) bool {
 	for _, hr := range hiddenRefs {
-		if strings.Contains(line, hr) {
+		if strings.HasPrefix(ref, hr) {
 			return true
 		}
 	}
@@ -478,11 +487,7 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			return err
 		}
 	} else {
-		quarantineDir, err = os.MkdirTemp(".", "default-quarantine")
-		if err != nil {
-			return err
-		}
-		quarantinePackDir = fmt.Sprintf("%s/pack", quarantineDir)
+		os.Exit(-1)
 	}
 
 	cmd.Args = append(
