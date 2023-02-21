@@ -310,12 +310,27 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 // potential references that we don't want to advertise
 // This method assumes the config entries passed as a second argument are the ones in the `receive.hiderefs` section
 func isHiddenRef(ref string, hiddenRefs []string) bool {
+	isHidden := false
 	for _, hr := range hiddenRefs {
-		if strings.HasPrefix(ref, hr) {
-			return true
+		neg, strippedRef := isNegativeRef(hr)
+
+		if strings.HasPrefix(ref, strippedRef) {
+			if neg {
+				isHidden = false
+			} else {
+				isHidden = true
+			}
+
 		}
 	}
-	return false
+	return isHidden
+}
+
+func isNegativeRef(ref string) (bool, string) {
+	if strings.HasPrefix(ref, "!") {
+		return true, ref[1:]
+	}
+	return false, ref
 }
 
 // writePacket writes `data` to the `r.output` as a pkt-line.

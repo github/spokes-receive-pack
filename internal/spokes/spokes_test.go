@@ -8,7 +8,7 @@ import (
 )
 
 func TestCheckHiddenRefs(t *testing.T) {
-	hiddenRefs := []string{"refs/pull/", "refs/gh/", "refs/__gh__"}
+	hiddenRefs := []string{"refs/pull/", "refs/gh/", "refs/__gh__", "!refs/__gh__/svn"}
 	for _, p := range []struct {
 		line       string
 		hiddenRefs []string
@@ -29,6 +29,7 @@ func TestCheckHiddenRefs(t *testing.T) {
 		{"refs/__gh__/pull/99986/rebase", hiddenRefs, true},
 		{"refs/gh/merge_queue/156066/6e33e3a2c52017bec941ffd6f15c20a1ae002ad9", hiddenRefs, true},
 		{"refs/pull/95628/head", hiddenRefs, true},
+		{"refs/__gh__/svn/branch-1", hiddenRefs, false},
 	} {
 		t.Run(
 			fmt.Sprintf("TestCheckHiddenRefs(%q, %q)", p.line, p.hiddenRefs),
