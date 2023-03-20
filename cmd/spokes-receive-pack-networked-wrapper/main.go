@@ -14,7 +14,7 @@ import (
 func main() {
 	env := []string{
 		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
-		"GIT_SOCKSTAT_VAR_quarantine_dir=objects/quarantine",
+		"GIT_SOCKSTAT_VAR_quarantine_id=test_quarantine_id",
 		"GIT_SOCKSTAT_VAR_parent_repo_id=git-internals",
 		"GIT_NW_ADVERTISE_TAGS=true",
 	}

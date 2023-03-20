@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -52,22 +51,31 @@ func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []stri
 	if flag.NArg() != 1 {
 		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
 	}
-	repoPath := flag.Args()[0]
+	repoPath, err := filepath.Abs(flag.Args()[0])
+	if err != nil {
+		return nil, err
+	}
 
 	config, err := config.GetConfig(repoPath)
 	if err != nil {
 		return nil, err
 	}
 
+	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
+	if quarantineID == "" {
+		return nil, fmt.Errorf("missing required sockstat var quarantine_id")
+	}
+
 	return &SpokesReceivePack{
-		input:         input,
-		output:        output,
-		err:           stderr,
-		capabilities:  capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
-		repoPath:      repoPath,
-		config:        config,
-		statelessRPC:  *statelessRPC,
-		advertiseRefs: *httpBackendInfoRefs,
+		input:            input,
+		output:           output,
+		err:              stderr,
+		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
+		repoPath:         repoPath,
+		config:           config,
+		statelessRPC:     *statelessRPC,
+		advertiseRefs:    *httpBackendInfoRefs,
+		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
 	}, nil
 }
 
@@ -440,16 +448,25 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-//
-// If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
-// current Git repository with a  default name determined from the pack content
 func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
 	}
 
-	args := []string{"index-pack", "--fix-thin", "--stdin", "-v"}
+	if err := r.makeQuarantineDirs(); err != nil {
+		return err
+	}
+
+	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/builtin/receive-pack.c#L2252-L2273
+	// and https://github.com/github/git/blob/d4a224977e032f93b1b8fd3201201f098d4f6757/builtin/receive-pack.c#L2362-L2386
+
+	args := []string{"index-pack", "--stdin"}
+
+	// FIXME? add --pack_header similar to git's push_header_arg
+
+	// These options are always on in prod.
+	args = append(args, "--show-resolving-progress", "--report-end-of-input", "--fix-thin")
 
 	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
@@ -480,26 +497,8 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
-	quarantinePackDir := ""
-	quarantineDir := ""
-	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		quarantineDir = quarantine
-		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
-		if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
-			return err
-		}
-	} else {
-		os.Exit(-1)
-	}
-
-	cmd.Args = append(
-		cmd.Args,
-		filepath.Join(
-			quarantinePackDir,
-			fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
-		))
-
-	r.quarantineFolder = quarantineDir
+	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -626,10 +625,16 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 }
 
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
+	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/tmp-objdir.c#L149-L153
 	return []string{
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s:%s", filepath.Join(r.repoPath, "objects"), filepath.Join(r.repoPath, ".git/objects")),
+		fmt.Sprintf("GIT_QUARANTINE_PATH=%s", r.quarantineFolder),
 	}
+}
+
+func (r *SpokesReceivePack) makeQuarantineDirs() error {
+	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0700)
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
