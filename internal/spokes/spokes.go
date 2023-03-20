@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1"
+	capabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
@@ -148,7 +148,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		}
 	}
 
-	if capabilities.IsDefined(pktline.ReportStatus) {
+	if capabilities.IsDefined(pktline.ReportStatusV2) || capabilities.IsDefined(pktline.ReportStatus) {
 		if err := r.report(ctx, unpackErr == nil, commands); err != nil {
 			return err
 		}
@@ -734,11 +734,11 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
 	var buf bytes.Buffer
 	if unpackOK {
-		if err := writePacketLine(&buf, []byte("unpack ok")); err != nil {
+		if err := writePacketLine(&buf, []byte("unpack ok\n")); err != nil {
 			return err
 		}
 	} else {
-		if err := writePacketLine(&buf, []byte("unpack index-pack failed")); err != nil {
+		if err := writePacketLine(&buf, []byte("unpack index-pack failed\n")); err != nil {
 			return err
 		}
 	}
@@ -751,6 +751,7 @@ func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 			if err := writePacketf(&buf, "%s %s\n", c.reportFF, c.refname); err != nil {
 				return err
 			}
+			// FIXME? if statusV2, maybe also write option refname, option old-oid, option new-oid, option forced-update
 		}
 	}
 
