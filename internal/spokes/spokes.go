@@ -36,13 +36,14 @@ type SpokesReceivePack struct {
 	err              io.Writer
 	capabilities     string
 	repoPath         string
+	config           *config.Config
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string, version string) (*SpokesReceivePack, error) {
+func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []string, version string) (*SpokesReceivePack, error) {
 	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
 	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
 	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
@@ -53,12 +54,18 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string,
 	}
 	repoPath := flag.Args()[0]
 
+	config, err := config.GetConfig(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SpokesReceivePack{
 		input:         input,
 		output:        output,
-		err:           err,
+		err:           stderr,
 		capabilities:  capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
 		repoPath:      repoPath,
+		config:        config,
 		statelessRPC:  *statelessRPC,
 		advertiseRefs: *httpBackendInfoRefs,
 	}, nil
@@ -171,10 +178,7 @@ func isFastForward(c *command, ctx context.Context) bool {
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
-	hiddenRefs, err := r.getHiddenRefs()
-	if err != nil {
-		return err
-	}
+	hiddenRefs := r.getHiddenRefs()
 
 	references := make([][]byte, 0, 100)
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
@@ -254,25 +258,11 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	return nil
 }
 
-func (r *SpokesReceivePack) getHiddenRefs() ([]string, error) {
-	c, err := config.GetConfig(r.repoPath, "receive.hiderefs")
-	if err != nil {
-		return nil, err
-	}
+func (r *SpokesReceivePack) getHiddenRefs() []string {
 	var hiddenRefs []string
-	for _, hr := range c.Entries {
-		hiddenRefs = append(hiddenRefs, hr.Value)
-	}
-
-	c, err = config.GetConfig(r.repoPath, "transfer.hiderefs")
-	if err != nil {
-		return nil, err
-	}
-
-	for _, hr := range c.Entries {
-		hiddenRefs = append(hiddenRefs, hr.Value)
-	}
-	return hiddenRefs, nil
+	hiddenRefs = append(hiddenRefs, r.config.GetAll("receive.hiderefs")...)
+	hiddenRefs = append(hiddenRefs, r.config.GetAll("transfer.hiderefs")...)
+	return hiddenRefs
 }
 
 func (r *SpokesReceivePack) networkRepoPath() (string, error) {
@@ -387,10 +377,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	pl := pktline.New()
 	var capabilities pktline.Capabilities
 
-	hiddenRefs, err := r.getHiddenRefs()
-	if err != nil {
-		return []command{}, nil, capabilities, err
-	}
+	hiddenRefs := r.getHiddenRefs()
 
 	for {
 		err := pl.Read(r.input)
@@ -547,15 +534,15 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 }
 
 func (r *SpokesReceivePack) isReportStatusFFConfigEnabled() bool {
-	reportStatusFF := config.GetConfigEntryValue(r.repoPath, "receive.reportStatusFF")
+	reportStatusFF := r.config.Get("receive.reportStatusFF")
 
 	return reportStatusFF == "true"
 
 }
 
 func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
-	receiveFsck := config.GetConfigEntryValue(r.repoPath, "receive.fsckObjects")
-	transferFsck := config.GetConfigEntryValue(r.repoPath, "transfer.fsckObjects")
+	receiveFsck := r.config.Get("receive.fsckObjects")
+	transferFsck := r.config.Get("transfer.fsckObjects")
 
 	if receiveFsck == "true" || transferFsck == "true" {
 		return true
@@ -565,7 +552,7 @@ func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
-	maxSize := config.GetConfigEntryValue(r.repoPath, "receive.maxsize")
+	maxSize := r.config.Get("receive.maxsize")
 
 	if maxSize != "" {
 		return strconv.Atoi(maxSize)
@@ -575,7 +562,7 @@ func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
 }
 
 func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
-	warnObjectSize := config.GetConfigEntryValue(r.repoPath, "receive.warnobjectsize")
+	warnObjectSize := r.config.Get("receive.warnobjectsize")
 
 	if warnObjectSize != "" {
 		return strconv.Atoi(warnObjectSize)
@@ -585,7 +572,7 @@ func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
 }
 
 func (r *SpokesReceivePack) getRefUpdateCommandLimit() (int, error) {
-	refUpdateCommandLimit := config.GetConfigEntryValue(r.repoPath, "receive.refupdatecommandlimit")
+	refUpdateCommandLimit := r.config.Get("receive.refupdatecommandlimit")
 
 	if refUpdateCommandLimit != "" {
 		return strconv.Atoi(refUpdateCommandLimit)
