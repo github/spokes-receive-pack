@@ -147,7 +147,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 
 			if singleObjectErr == nil && c.isUpdate() && r.isReportStatusFFConfigEnabled() {
 				// check if a fast-forward could be performed
-				if isFastForward(c, ctx) {
+				if r.isFastForward(c, ctx) {
 					c.reportFF = "ff"
 				} else {
 					c.reportFF = "nf"
@@ -165,7 +165,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	return nil
 }
 
-func isFastForward(c *command, ctx context.Context) bool {
+func (r *SpokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
@@ -174,6 +174,8 @@ func isFastForward(c *command, ctx context.Context) bool {
 		c.oldOID,
 		c.newOID,
 	)
+	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	if err := cmd.Run(); err != nil {
 		return false
@@ -668,6 +670,7 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--alternate-refs",
 	)
 	cmd.Stderr = devNull
+	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
@@ -725,6 +728,7 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"--alternate-refs",
 		oid,
 	)
+	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	out, err := cmd.CombinedOutput()
