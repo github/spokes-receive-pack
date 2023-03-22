@@ -22,9 +22,6 @@ type ConfigEntry struct {
 // Config represents the gitconfig, or part of the gitconfig, read by
 // `ReadConfig()`.
 type Config struct {
-	// Prefix is the key prefix that was read to fill this `Config`.
-	Prefix string
-
 	// Entries contains the configuration entries that matched
 	// `Prefix`, in the order that they are reported by `git config
 	// --list`.
@@ -32,11 +29,7 @@ type Config struct {
 }
 
 // GetConfig returns the entries from gitconfig in the repo located at repo.
-// If `prefix` is provided, then only include entries in that section, which must
-// match the at a component boundary (as defined by
-// `configKeyMatchesPrefix()`), and strip off the prefix in the keys
-// that are returned.
-func GetConfig(repo string, prefix string) (*Config, error) {
+func GetConfig(repo string) (*Config, error) {
 	if err := os.Chdir(repo); err != nil {
 		return nil, err
 	}
@@ -51,10 +44,7 @@ func GetConfig(repo string, prefix string) (*Config, error) {
 		return nil, fmt.Errorf("reading git configuration: %w", err)
 	}
 
-	loweredPrefix := strings.ToLower(prefix)
-	config := Config{
-		Prefix: loweredPrefix,
-	}
+	config := &Config{}
 
 	for len(out) > 0 {
 		keyEnd := bytes.IndexByte(out, '\n')
@@ -70,60 +60,38 @@ func GetConfig(repo string, prefix string) (*Config, error) {
 		value := string(out[:valueEnd])
 		out = out[valueEnd+1:]
 
-		ok, rest := configKeyMatchesPrefix(key, loweredPrefix)
-		if !ok {
-			continue
-		}
-
 		entry := ConfigEntry{
-			Key:   rest,
+			Key:   key,
 			Value: value,
 		}
 		config.Entries = append(config.Entries, entry)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
-// GetConfigEntryValue returns the last entry in the list for the request config setting or an empty string in case
+// Get returns the last entry in the list for the request config setting or an empty string in case
 // it cannot be found
-func GetConfigEntryValue(repo string, prefix string) string {
-	value, err := GetConfig(repo, prefix)
-	if err != nil {
-		return ""
+func (c *Config) Get(name string) string {
+	name = strings.ToLower(name)
+	value := ""
+	for _, entry := range c.Entries {
+		if entry.Key == name {
+			value = entry.Value
+		}
 	}
 
-	if len(value.Entries) >= 1 {
-		return value.Entries[len(value.Entries)-1].Value
-	}
-
-	return ""
+	return value
 }
 
-// configKeyMatchesPrefix checks whether `key` starts with `prefix` at
-// a component boundary (i.e., at a '.'). If yes, it returns `true`
-// and the part of the key after the prefix; e.g.:
-//
-//	configKeyMatchesPrefix("foo.bar", "foo") → true, "bar"
-//	configKeyMatchesPrefix("foo.bar", "foo.") → true, "bar"
-//	configKeyMatchesPrefix("foo.bar", "foo.bar") → true, ""
-//	configKeyMatchesPrefix("foo.bar", "foo.bar.") → false, ""
-func configKeyMatchesPrefix(key, prefix string) (bool, string) {
-	if prefix == "" {
-		return true, key
+// GetAll returns all values for the requested config setting.
+func (c *Config) GetAll(name string) []string {
+	name = strings.ToLower(name)
+	var res []string
+	for _, entry := range c.Entries {
+		if entry.Key == name {
+			res = append(res, entry.Value)
+		}
 	}
-	if !strings.HasPrefix(key, prefix) {
-		return false, ""
-	}
-
-	if prefix[len(prefix)-1] == '.' {
-		return true, key[len(prefix):]
-	}
-	if len(key) == len(prefix) {
-		return true, ""
-	}
-	if key[len(prefix)] == '.' {
-		return true, key[len(prefix)+1:]
-	}
-	return false, ""
+	return res
 }

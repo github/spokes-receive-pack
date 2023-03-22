@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -22,7 +21,7 @@ import (
 )
 
 const (
-	capabilities = "report-status delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1"
+	capabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
@@ -36,13 +35,14 @@ type SpokesReceivePack struct {
 	err              io.Writer
 	capabilities     string
 	repoPath         string
+	config           *config.Config
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
 }
 
 // NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string, version string) (*SpokesReceivePack, error) {
+func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []string, version string) (*SpokesReceivePack, error) {
 	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
 	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
 	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
@@ -51,16 +51,31 @@ func NewSpokesReceivePack(input io.Reader, output, err io.Writer, args []string,
 	if flag.NArg() != 1 {
 		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
 	}
-	repoPath := flag.Args()[0]
+	repoPath, err := filepath.Abs(flag.Args()[0])
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := config.GetConfig(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
+	if quarantineID == "" {
+		return nil, fmt.Errorf("missing required sockstat var quarantine_id")
+	}
 
 	return &SpokesReceivePack{
-		input:         input,
-		output:        output,
-		err:           err,
-		capabilities:  capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
-		repoPath:      repoPath,
-		statelessRPC:  *statelessRPC,
-		advertiseRefs: *httpBackendInfoRefs,
+		input:            input,
+		output:           output,
+		err:              stderr,
+		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
+		repoPath:         repoPath,
+		config:           config,
+		statelessRPC:     *statelessRPC,
+		advertiseRefs:    *httpBackendInfoRefs,
+		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
 	}, nil
 }
 
@@ -132,7 +147,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 
 			if singleObjectErr == nil && c.isUpdate() && r.isReportStatusFFConfigEnabled() {
 				// check if a fast-forward could be performed
-				if isFastForward(c, ctx) {
+				if r.isFastForward(c, ctx) {
 					c.reportFF = "ff"
 				} else {
 					c.reportFF = "nf"
@@ -141,7 +156,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 		}
 	}
 
-	if capabilities.IsDefined(pktline.ReportStatus) {
+	if capabilities.IsDefined(pktline.ReportStatusV2) || capabilities.IsDefined(pktline.ReportStatus) {
 		if err := r.report(ctx, unpackErr == nil, commands); err != nil {
 			return err
 		}
@@ -150,7 +165,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context) error {
 	return nil
 }
 
-func isFastForward(c *command, ctx context.Context) bool {
+func (r *SpokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
@@ -159,6 +174,8 @@ func isFastForward(c *command, ctx context.Context) bool {
 		c.oldOID,
 		c.newOID,
 	)
+	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	if err := cmd.Run(); err != nil {
 		return false
@@ -171,10 +188,7 @@ func isFastForward(c *command, ctx context.Context) bool {
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
 func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
-	hiddenRefs, err := r.getHiddenRefs()
-	if err != nil {
-		return err
-	}
+	hiddenRefs := r.getHiddenRefs()
 
 	references := make([][]byte, 0, 100)
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
@@ -254,25 +268,11 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	return nil
 }
 
-func (r *SpokesReceivePack) getHiddenRefs() ([]string, error) {
-	c, err := config.GetConfig(r.repoPath, "receive.hiderefs")
-	if err != nil {
-		return nil, err
-	}
+func (r *SpokesReceivePack) getHiddenRefs() []string {
 	var hiddenRefs []string
-	for _, hr := range c.Entries {
-		hiddenRefs = append(hiddenRefs, hr.Value)
-	}
-
-	c, err = config.GetConfig(r.repoPath, "transfer.hiderefs")
-	if err != nil {
-		return nil, err
-	}
-
-	for _, hr := range c.Entries {
-		hiddenRefs = append(hiddenRefs, hr.Value)
-	}
-	return hiddenRefs, nil
+	hiddenRefs = append(hiddenRefs, r.config.GetAll("receive.hiderefs")...)
+	hiddenRefs = append(hiddenRefs, r.config.GetAll("transfer.hiderefs")...)
+	return hiddenRefs
 }
 
 func (r *SpokesReceivePack) networkRepoPath() (string, error) {
@@ -387,10 +387,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	pl := pktline.New()
 	var capabilities pktline.Capabilities
 
-	hiddenRefs, err := r.getHiddenRefs()
-	if err != nil {
-		return []command{}, nil, capabilities, err
-	}
+	hiddenRefs := r.getHiddenRefs()
 
 	for {
 		err := pl.Read(r.input)
@@ -453,16 +450,25 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-//
-// If GIT_SOCKSTAT_VAR_quarantine_dir is not specified, the pack will be written to objects/pack/ directory within the
-// current Git repository with a  default name determined from the pack content
 func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
 	}
 
-	args := []string{"index-pack", "--fix-thin", "--stdin", "-v"}
+	if err := r.makeQuarantineDirs(); err != nil {
+		return err
+	}
+
+	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/builtin/receive-pack.c#L2252-L2273
+	// and https://github.com/github/git/blob/d4a224977e032f93b1b8fd3201201f098d4f6757/builtin/receive-pack.c#L2362-L2386
+
+	args := []string{"index-pack", "--stdin"}
+
+	// FIXME? add --pack_header similar to git's push_header_arg
+
+	// These options are always on in prod.
+	args = append(args, "--show-resolving-progress", "--report-end-of-input", "--fix-thin")
 
 	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
@@ -493,26 +499,8 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
-	quarantinePackDir := ""
-	quarantineDir := ""
-	if quarantine := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_dir"); quarantine != "" {
-		quarantineDir = quarantine
-		quarantinePackDir = fmt.Sprintf("%s/pack", quarantine)
-		if err := os.MkdirAll(quarantinePackDir, 0700); err != nil {
-			return err
-		}
-	} else {
-		os.Exit(-1)
-	}
-
-	cmd.Args = append(
-		cmd.Args,
-		filepath.Join(
-			quarantinePackDir,
-			fmt.Sprintf("quarantine-%d.pack", time.Now().UnixNano()),
-		))
-
-	r.quarantineFolder = quarantineDir
+	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	// We want to discard stdout but forward stderr to `w`
 	// Depending on the sideband capability we would need to do it in a sideband
@@ -547,15 +535,15 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 }
 
 func (r *SpokesReceivePack) isReportStatusFFConfigEnabled() bool {
-	reportStatusFF := config.GetConfigEntryValue(r.repoPath, "receive.reportStatusFF")
+	reportStatusFF := r.config.Get("receive.reportStatusFF")
 
 	return reportStatusFF == "true"
 
 }
 
 func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
-	receiveFsck := config.GetConfigEntryValue(r.repoPath, "receive.fsckObjects")
-	transferFsck := config.GetConfigEntryValue(r.repoPath, "transfer.fsckObjects")
+	receiveFsck := r.config.Get("receive.fsckObjects")
+	transferFsck := r.config.Get("transfer.fsckObjects")
 
 	if receiveFsck == "true" || transferFsck == "true" {
 		return true
@@ -565,7 +553,7 @@ func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
-	maxSize := config.GetConfigEntryValue(r.repoPath, "receive.maxsize")
+	maxSize := r.config.Get("receive.maxsize")
 
 	if maxSize != "" {
 		return strconv.Atoi(maxSize)
@@ -575,7 +563,7 @@ func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
 }
 
 func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
-	warnObjectSize := config.GetConfigEntryValue(r.repoPath, "receive.warnobjectsize")
+	warnObjectSize := r.config.Get("receive.warnobjectsize")
 
 	if warnObjectSize != "" {
 		return strconv.Atoi(warnObjectSize)
@@ -585,7 +573,7 @@ func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
 }
 
 func (r *SpokesReceivePack) getRefUpdateCommandLimit() (int, error) {
-	refUpdateCommandLimit := config.GetConfigEntryValue(r.repoPath, "receive.refupdatecommandlimit")
+	refUpdateCommandLimit := r.config.Get("receive.refupdatecommandlimit")
 
 	if refUpdateCommandLimit != "" {
 		return strconv.Atoi(refUpdateCommandLimit)
@@ -639,10 +627,16 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 }
 
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
+	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/tmp-objdir.c#L149-L153
 	return []string{
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s:%s", filepath.Join(r.repoPath, "objects"), filepath.Join(r.repoPath, ".git/objects")),
+		fmt.Sprintf("GIT_QUARANTINE_PATH=%s", r.quarantineFolder),
 	}
+}
+
+func (r *SpokesReceivePack) makeQuarantineDirs() error {
+	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0700)
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
@@ -676,6 +670,7 @@ func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--alternate-refs",
 	)
 	cmd.Stderr = devNull
+	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
@@ -733,6 +728,7 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"--alternate-refs",
 		oid,
 	)
+	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	out, err := cmd.CombinedOutput()
@@ -747,11 +743,11 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
 	var buf bytes.Buffer
 	if unpackOK {
-		if err := writePacketLine(&buf, []byte("unpack ok")); err != nil {
+		if err := writePacketLine(&buf, []byte("unpack ok\n")); err != nil {
 			return err
 		}
 	} else {
-		if err := writePacketLine(&buf, []byte("unpack index-pack failed")); err != nil {
+		if err := writePacketLine(&buf, []byte("unpack index-pack failed\n")); err != nil {
 			return err
 		}
 	}
@@ -764,6 +760,7 @@ func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 			if err := writePacketf(&buf, "%s %s\n", c.reportFF, c.refname); err != nil {
 				return err
 			}
+			// FIXME? if statusV2, maybe also write option refname, option old-oid, option new-oid, option forced-update
 		}
 	}
 
