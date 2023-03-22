@@ -253,7 +253,7 @@ func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations fun
 				return err
 			},
 		),
-		pipe.Command("git", "hash-object", "-t", "commit", "-w", "--stdin"),
+		pipe.Command("git", "hash-object", "-t", "commit", "-w", "--stdin", "--literally"),
 		pipe.Function(
 			"push-to-remote",
 			func(_ context.Context, _ pipe.Env, stdin io.Reader, _ io.Writer) error {
