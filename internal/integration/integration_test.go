@@ -3,13 +3,14 @@
 package integration
 
 import (
-	"bufio"
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/github/go-pipe/pipe"
@@ -219,54 +220,63 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClo
 }
 
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
+	var pushOut []byte
+	var pushErr error
+
+	h := func(event *pipe.Event) {
+		log.Printf("PIPELINE EVENT:")
+		log.Printf("-- COMMAND = %q", event.Command)
+		log.Printf("-- MSG = %q", event.Msg)
+		log.Printf("-- CONTEXT = %v", event.Context)
+		for err := event.Err; err != nil; err = errors.Unwrap(err) {
+			log.Printf("-- ERROR: (%T) %v", err, err)
+			switch e := err.(type) {
+			case *exec.ExitError:
+				log.Printf("--- exit code: %v", e.ExitCode())
+				log.Printf("--- stderr: %s", e.Stderr)
+			}
+		}
+	}
+
 	// let's create an invalid object
-	p := pipe.New(pipe.WithDir(suite.localRepo))
+	p := pipe.New(pipe.WithDir(suite.localRepo), pipe.WithEventHandler(h))
 	p.Add(
 		pipe.Command("git", "rev-parse", "HEAD^{tree}"),
-		pipe.LinewiseFunction(
-			"generate-bogus-tree-object",
-			func(_ context.Context, _ pipe.Env, line []byte, output *bufio.Writer) error {
-				output.WriteString(fmt.Sprintf(bogusCommit, string(line)))
-				return nil
-			},
-		),
 		pipe.Function(
-			"compute-hash",
-			func(_ context.Context, env pipe.Env, stdin io.Reader, stdout io.Writer) error {
-				cmd := exec.Command("git", "hash-object", "-t", "commit", "-w", "--stdin")
-
-				// write the bogus tree object to the stdin of the previous process
-				commit := make([]byte, 201)
-				n, err := stdin.Read(commit)
-				require.NoError(suite.T(), err)
-				b := bytes.Buffer{}
-				b.Write(commit[0:n])
-				cmd.Stdin = &b
-
-				// Pass the result (hash) to the next step in the pipe
-				hash, err := cmd.CombinedOutput()
-				require.NoError(suite.T(), err)
-				stdout.Write(hash)
-				return nil
+			"generate-bogus-tree-object",
+			func(_ context.Context, _ pipe.Env, stdin io.Reader, stdout io.Writer) error {
+				data, err := io.ReadAll(stdin)
+				if err != nil {
+					return err
+				}
+				_, err = stdout.Write([]byte(fmt.Sprintf(bogusCommit, strings.TrimSpace(string(data)))))
+				return err
 			},
 		),
-		pipe.LinewiseFunction(
+		pipe.Command("git", "hash-object", "-t", "commit", "-w", "--stdin", "--literally"),
+		pipe.Function(
 			"push-to-remote",
-			func(_ context.Context, _ pipe.Env, line []byte, _ *bufio.Writer) error {
-				out, err := exec.Command(
+			func(_ context.Context, _ pipe.Env, stdin io.Reader, _ io.Writer) error {
+				data, err := io.ReadAll(stdin)
+				if err != nil {
+					return err
+				}
+				line := strings.TrimSpace(string(data))
+				pushOut, pushErr = exec.Command(
 					"git",
 					"push",
 					"--receive-pack=spokes-receive-pack-wrapper",
 					"r",
-					fmt.Sprintf("%s:refs/heads/bogus", string(line))).CombinedOutput()
+					fmt.Sprintf("%s:refs/heads/bogus", line)).CombinedOutput()
 
-				validations(suite, err, out)
 				return nil
 			},
 		),
 	)
 
-	p.Run(context.Background())
+	require.NoError(suite.T(), p.Run(context.Background()))
+
+	validations(suite, pushErr, pushOut)
 }
 
 func TestSpokesReceivePackTestSuite(t *testing.T) {
