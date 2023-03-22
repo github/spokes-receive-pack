@@ -64,7 +64,7 @@ test: go-test
 test-integration: BUILDTAGS=-tags integration
 test-integration: all go-binaries go-test-integration
 
-TESTFLAGS := -race
+TESTFLAGS := -race -timeout 60s
 TESTINTEGRATIONFLAGS := $(TESTFLAGS) --tags=integration
 TESTSUITE := ./...
 .PHONY: go-test
