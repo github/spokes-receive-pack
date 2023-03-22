@@ -10,7 +10,6 @@ ownership:
   qos: experimental
   team: github/git-access
   team_slack: git-systems
-  ops_slack: git-systems-alerts
   maintainer: spraints
   exec_sponsor: prplr
   product_manager: vtbassmatt
