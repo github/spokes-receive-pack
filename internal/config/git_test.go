@@ -9,32 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestConfigKeyMatchesPrefix(t *testing.T) {
-	for _, p := range []struct {
-		key, prefix    string
-		expectedBool   bool
-		expectedString string
-	}{
-		{"foo.bar", "", true, "foo.bar"},
-		{"foo.bar", "foo", true, "bar"},
-		{"foo.bar", "foo.", true, "bar"},
-		{"foo.bar", "foo.bar", true, ""},
-		{"foo.bar", "foo.bar.", false, ""},
-		{"foo.bar", "foo.bar.baz", false, ""},
-		{"foo.bar", "foo.barbaz", false, ""},
-		{"foo.bar.baz", "foo.bar", true, "baz"},
-		{"foo.barbaz", "foo.bar", false, ""},
-		{"foo.bar", "bar", false, ""},
-	} {
-		t.Run(
-			fmt.Sprintf("TestConfigKeyMatchesPrefix(%q, %q)", p.key, p.prefix),
-			func(t *testing.T) {
-				ok, s := configKeyMatchesPrefix(p.key, p.prefix)
-				assert.Equal(t, p.expectedBool, ok)
-				assert.Equal(t, p.expectedString, s)
-			},
-		)
+func testGetConfigEntryValue(repoPath, name string) string {
+	c, err := GetConfig(repoPath)
+	if err != nil {
+		panic(err)
 	}
+	return c.Get(name)
 }
 
 func TestGetConfigMultipleValues(t *testing.T) {
@@ -52,13 +32,14 @@ func TestGetConfigMultipleValues(t *testing.T) {
 	assert.NoError(t, exec.Command("git", "config", "--add", "receive.hiderefs", "refs/gh/").Run())
 	assert.NoError(t, exec.Command("git", "config", "--add", "receive.hiderefs", "refs/__gh__").Run())
 
-	config, err := GetConfig(localRepo, "receive.hiderefs")
+	config, err := GetConfig(localRepo)
 	assert.NoError(t, err, "unable to properly extract the receive section from the GitConfig")
 
-	assert.Equalf(t, 3, len(config.Entries), "expected %d under %s prefix but got %d", 3, config.Prefix, len(config.Entries))
-	assert.Equal(t, config.Entries[0].Value, "refs/pull/")
-	assert.Equal(t, config.Entries[1].Value, "refs/gh/")
-	assert.Equal(t, config.Entries[2].Value, "refs/__gh__")
+	values := config.GetAll("receive.hiderefs")
+	assert.Equalf(t, 3, len(values), "expected %d values but got %d", 3, len(values))
+	assert.Equal(t, values[0], "refs/pull/")
+	assert.Equal(t, values[1], "refs/gh/")
+	assert.Equal(t, values[2], "refs/__gh__")
 }
 
 func TestGetConfigEntryValues(t *testing.T) {
@@ -75,9 +56,9 @@ func TestGetConfigEntryValues(t *testing.T) {
 	assert.NoError(t, exec.Command("git", "config", "receive.fsckObjects", "true").Run())
 	assert.NoError(t, exec.Command("git", "config", "receive.maxsize", "11").Run())
 
-	fsckObjects := GetConfigEntryValue(localRepo, "receive.fsckObjects")
+	fsckObjects := testGetConfigEntryValue(localRepo, "receive.fsckObjects")
 	assert.Equal(t, "true", fsckObjects)
-	maxSize := GetConfigEntryValue(localRepo, "receive.maxsize")
+	maxSize := testGetConfigEntryValue(localRepo, "receive.maxsize")
 	assert.Equal(t, "11", maxSize)
 }
 
@@ -96,6 +77,6 @@ func TestGetConfigEntryMultipleValues(t *testing.T) {
 	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "b").Run())
 	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "c").Run())
 
-	fsckObjects := GetConfigEntryValue(localRepo, "receive.multivalue")
+	fsckObjects := testGetConfigEntryValue(localRepo, "receive.multivalue")
 	assert.Equal(t, "c", fsckObjects)
 }
