@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/github/spokes-receive-pack/internal/governor"
 	"github.com/github/spokes-receive-pack/internal/receivepack"
 	"github.com/github/spokes-receive-pack/internal/spokes"
 )
@@ -29,6 +32,12 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 			return fmt.Errorf("unexpected error running receive pack: %w", err)
 		}
 	} else {
+		ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+		defer stop()
+
+		g := governor.Start(ctx)
+		defer g.Finish(ctx)
+
 		rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args, BuildVersion)
 		if err != nil {
 			return err
