@@ -22,7 +22,7 @@ const (
 //
 // If there is a connection or other low level error when talking to governor,
 // Start will return (nil, nil).
-func Start(ctx context.Context) (*Conn, error) {
+func Start(ctx context.Context, gitDir string) (*Conn, error) {
 	sock, err := connect(ctx)
 	if err != nil {
 		return nil, nil
@@ -31,7 +31,7 @@ func Start(ctx context.Context) (*Conn, error) {
 	updateData := readSockstat(os.Environ())
 	updateData.PID = os.Getpid()
 	updateData.Program = "spokes-receive-pack"
-	updateData.GitDir, _ = os.Getwd()
+	updateData.GitDir = gitDir
 	if err := update(sock, updateData); err != nil {
 		sock.Close()
 		return nil, nil

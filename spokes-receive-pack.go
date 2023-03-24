@@ -44,7 +44,7 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) (int, er
 		return 1, err
 	}
 
-	g, err := governor.Start(ctx)
+	g, err := governor.Start(ctx, rp.RepoPath)
 	if err != nil {
 		return 75, err
 	}
