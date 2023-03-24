@@ -32,11 +32,12 @@ const (
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
+	RepoPath string
+
 	input            io.Reader
 	output           io.Writer
 	err              io.Writer
 	capabilities     string
-	RepoPath         string
 	config           *config.Config
 	statelessRPC     bool
 	advertiseRefs    bool
