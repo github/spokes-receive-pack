@@ -4,14 +4,18 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/github/go-pipe/pipe"
 	"github.com/stretchr/testify/assert"
@@ -120,6 +124,94 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
 		exec.Command(
 			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
 		"unexpected error running the push with the custom spokes-receive-pack program")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
+	govSock, msgs, cleanup := startFakeGovernor(suite.T())
+	defer cleanup()
+
+	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
+	cmd.Env = append(os.Environ(), "GIT_SOCKSTAT_PATH="+govSock)
+
+	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), cmd.Run(),
+		"unexpected error running the push with the custom spokes-receive-pack program")
+
+	timeout := time.After(time.Second)
+	requireGovernorMessage(suite.T(), timeout, msgs, func(msg govMessage) {
+		assert.Equal(suite.T(), "update", msg.Command)
+		assert.ElementsMatch(suite.T(), []string{"pid", "program", "git_dir"}, keys(msg.Data))
+		assert.Equal(suite.T(), "spokes-receive-pack", msg.Data["program"])
+	})
+	requireGovernorMessage(suite.T(), timeout, msgs, func(msg govMessage) {
+		assert.Equal(suite.T(), "finish", msg.Command)
+		assert.ElementsMatch(suite.T(), []string{"result_code"}, keys(msg.Data))
+		assert.Equal(suite.T(), float64(0), msg.Data["result_code"])
+	})
+}
+
+func startFakeGovernor(t *testing.T) (string, <-chan govMessage, func()) {
+	tmpdir, err := os.MkdirTemp("", "spokes-receive-pack-governor-*")
+	require.NoError(t, err)
+	cleanup := func() { os.RemoveAll(tmpdir) }
+
+	sockpath := filepath.Join(tmpdir, "gov.sock")
+	t.Logf("fake gov listening on %s", sockpath)
+	l, err := net.Listen("unix", sockpath)
+	require.NoError(t, err)
+
+	msgs := make(chan govMessage, 2)
+	go func() {
+		defer l.Close()
+		defer close(msgs)
+		conn, err := l.Accept()
+		if err != nil {
+			t.Logf("gov: accept error: %v", err)
+			return
+		}
+		t.Logf("gov accepted on %s", sockpath)
+		decoder := json.NewDecoder(conn)
+		for {
+			var msg govMessage
+			err := decoder.Decode(&msg)
+			if err != nil {
+				if err != io.EOF {
+					t.Logf("gov: read error: %v", err)
+				}
+				break
+			}
+			if msg.Command == "schedule" {
+				conn.Write([]byte("continue\n"))
+			} else {
+				msgs <- msg
+			}
+		}
+	}()
+
+	return sockpath, msgs, cleanup
+}
+
+type govMessage struct {
+	Command string                 `json:"command"`
+	Data    map[string]interface{} `json:"data"`
+}
+
+func requireGovernorMessage(t *testing.T, timeout <-chan time.Time, msgs <-chan govMessage, verify func(msg govMessage)) {
+	select {
+	case msg, ok := <-msgs:
+		require.True(t, ok)
+		verify(msg)
+	case <-timeout:
+		t.Fatal("timed out waiting for gov message from spokes-receive-pack")
+	}
+}
+
+func keys(m map[string]interface{}) []string {
+	var res []string
+	for k := range m {
+		res = append(res, k)
+	}
+	return res
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithExtraReceiveOptions() {

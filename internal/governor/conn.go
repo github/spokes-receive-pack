@@ -96,7 +96,7 @@ func connect(ctx context.Context) (net.Conn, error) {
 	defer cancel()
 
 	path := os.Getenv("GIT_SOCKSTAT_PATH")
-	if path != "" {
+	if path == "" {
 		path = "/var/run/gitmon/gitstats.sock"
 	}
 
