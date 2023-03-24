@@ -78,6 +78,19 @@ func (c *Conn) SetError(exitCode uint8, message string) {
 	c.finish.Fatal = message
 }
 
+// SetReceivePackSize records the incoming packfile's size to include with the
+// finish message.
+//
+// It is safe to call SetReceivePackSize with a nil *Conn.
+func (c *Conn) SetReceivePackSize(size int64) {
+	if c == nil {
+		return
+	}
+	if size > 0 {
+		c.finish.ReceivePackSize = uint64(size)
+	}
+}
+
 // Finish sends the "finish" message to governor and closes the connection.
 //
 // It is safe to call Finish with a nil *Conn.

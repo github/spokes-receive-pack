@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -119,7 +120,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context, g *governor.Conn) error
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr = r.readPack(ctx, commands, capabilities); unpackErr != nil {
+	if unpackErr = r.readPack(ctx, commands, capabilities, g); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 			commands[i].reportFF = "ng"
@@ -451,7 +452,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
+func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities, g *governor.Conn) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
@@ -503,13 +504,30 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
-	// We want to discard stdout but forward stderr to `w`
-	// Depending on the sideband capability we would need to do it in a sideband
+	// index-pack will read the rest of spokes-receive-pack's stdin.
 	cmd.Stdin = r.input
+
+	// Forward stderr to `w`.
+	// Depending on the sideband capability we would need to do it in a sideband
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("creating pipe for 'index-pack' stderr: %w", err)
 	}
+
+	// Collect stdout for use in reporting to governor.
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("creating pipe for 'index-pack' stdout: %w", err)
+	}
+	indexPackOut := make(chan []byte, 1)
+	go func(r io.ReadCloser, res chan<- []byte) {
+		defer close(indexPackOut)
+		defer r.Close()
+		out, err := io.ReadAll(r)
+		if err == nil {
+			indexPackOut <- out
+		}
+	}(stdout, indexPackOut)
 
 	eg, err := startSidebandMultiplexer(stderr, r.output, capabilities)
 	if err != nil {
@@ -530,6 +548,19 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	if waitErr := cmd.Wait(); waitErr != nil {
 		return waitErr
+	}
+
+	select {
+	case out, ok := <-indexPackOut:
+		if ok && (bytes.HasPrefix(out, []byte("pack\t")) || bytes.HasPrefix(out, []byte("keep\t"))) {
+			packID := string(bytes.TrimSpace(out[5:]))
+			packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
+			if info, err := os.Stat(packPath); err == nil {
+				g.SetReceivePackSize(info.Size())
+			}
+		}
+	case <-time.After(time.Second):
+		// For some reason, index-pack's output isn't available. Just move on...
 	}
 
 	return nil

@@ -146,8 +146,9 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	})
 	requireGovernorMessage(suite.T(), timeout, msgs, func(msg govMessage) {
 		assert.Equal(suite.T(), "finish", msg.Command)
-		assert.ElementsMatch(suite.T(), []string{"result_code"}, keys(msg.Data))
+		assert.ElementsMatch(suite.T(), []string{"result_code", "receive_pack_size"}, keys(msg.Data))
 		assert.Equal(suite.T(), float64(0), msg.Data["result_code"])
+		assert.Truef(suite.T(), msg.Data["receive_pack_size"].(float64) > 3000, "expect receive_pack_size (%v) to be at least 3000 bytes", msg.Data["receive_pack_size"])
 	})
 }
 
