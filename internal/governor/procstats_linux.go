@@ -16,8 +16,9 @@ func getProcStats() procStats {
 	var ru syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err == nil {
 		res.CPU = uint32(ru.Utime.Sec*1000) + uint32(ru.Utime.Usec/1000) + uint32(ru.Stime.Sec*1000) + uint32(ru.Stime.Usec/1000)
-		res.RSS = uint64(ru.Maxrss)
 	}
+
+	res.RSS = getPeakRSS()
 
 	if res.RSS == 0 {
 		pageSize := syscall.Getpagesize()
@@ -63,4 +64,25 @@ func getProcStats() procStats {
 	}
 
 	return res
+}
+
+func getPeakRSS() uint64 {
+	const prefix = "\nVmHWM:"
+
+	stat, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0
+	}
+
+	i := bytes.Index(stat, []byte(prefix))
+	if i == -1 {
+		return 0
+	}
+
+	val, err := strconv.Parse(string(stat[i:]), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return val
 }
