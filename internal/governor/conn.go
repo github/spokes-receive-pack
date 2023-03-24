@@ -63,13 +63,32 @@ func Start(ctx context.Context) (*Conn, error) {
 
 // Conn is an active connection to governor.
 type Conn struct {
-	sock net.Conn
+	sock   net.Conn
+	finish finishData
+}
+
+// SetError stores an error to include with the finish message.
+//
+// It is safe to call SetError with a nil *Conn.
+func (c *Conn) SetError(exitCode uint8, message string) {
+	if c == nil {
+		return
+	}
+	c.finish.ResultCode = exitCode
+	c.finish.Fatal = message
 }
 
 // Finish sends the "finish" message to governor and closes the connection.
 //
 // It is safe to call Finish with a nil *Conn.
 func (c *Conn) Finish(ctx context.Context) {
+	if c == nil || c.sock == nil {
+		return
+	}
+
+	_ = finish(c.sock, c.finish)
+	c.sock.Close()
+	c.sock = nil
 }
 
 func connect(ctx context.Context) (net.Conn, error) {
