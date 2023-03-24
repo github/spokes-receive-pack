@@ -183,7 +183,7 @@ func readSockstat(environ []string) updateData {
 // uint32 like 123. If the prefix is missing or the value isn't a uint32,
 // return 0.
 func sockstatUint32(s string) uint32 {
-	s, ok := strings.CutPrefix(s, "uint:")
+	s, ok := cutPrefix(s, "uint:")
 	if !ok {
 		return 0
 	}
@@ -204,4 +204,12 @@ func sockstatString(s string) string {
 		return parts[1]
 	}
 	return s
+}
+
+// TODO: replace with Go 1.20's strings.CutPrefix
+func cutPrefix(s, prefix string) (string, bool) {
+	if !strings.HasPrefix(s, prefix) {
+		return s, false
+	}
+	return s[len(prefix):], true
 }
