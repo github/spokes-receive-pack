@@ -142,6 +142,7 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 		assert.Equal(suite.T(), "update", msg.Command)
 		assert.ElementsMatch(suite.T(), []string{"pid", "program", "git_dir"}, keys(msg.Data))
 		assert.Equal(suite.T(), "spokes-receive-pack", msg.Data["program"])
+		assert.Equal(suite.T(), filepath.Base(suite.remoteRepo), filepath.Base(msg.Data["git_dir"].(string))) // avoid problems from non-canonical paths, e.g. on macOS with its /tmp symlink.
 	})
 	requireGovernorMessage(suite.T(), timeout, msgs, func(msg govMessage) {
 		assert.Equal(suite.T(), "finish", msg.Command)

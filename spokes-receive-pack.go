@@ -39,18 +39,18 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) (int, er
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
+	rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args, BuildVersion)
+	if err != nil {
+		return 1, err
+	}
+
 	g, err := governor.Start(ctx)
 	if err != nil {
 		return 75, err
 	}
 	defer g.Finish(ctx)
 
-	rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args, BuildVersion)
-	if err != nil {
-		g.SetError(1, err.Error())
-		return 1, err
-	}
-	if err := rp.Execute(ctx); err != nil {
+	if err := rp.Execute(ctx, g); err != nil {
 		g.SetError(1, err.Error())
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}

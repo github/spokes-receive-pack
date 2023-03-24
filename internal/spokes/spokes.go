@@ -16,6 +16,7 @@ import (
 
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
+	"github.com/github/spokes-receive-pack/internal/governor"
 	"github.com/github/spokes-receive-pack/internal/pktline"
 	"golang.org/x/sync/errgroup"
 )
@@ -34,7 +35,7 @@ type SpokesReceivePack struct {
 	output           io.Writer
 	err              io.Writer
 	capabilities     string
-	repoPath         string
+	RepoPath         string
 	config           *config.Config
 	statelessRPC     bool
 	advertiseRefs    bool
@@ -71,7 +72,7 @@ func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []stri
 		output:           output,
 		err:              stderr,
 		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
-		repoPath:         repoPath,
+		RepoPath:         repoPath,
 		config:           config,
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
@@ -82,9 +83,9 @@ func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []stri
 // Execute executes our custom implementation
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
-func (r *SpokesReceivePack) Execute(ctx context.Context) error {
-	if err := os.Chdir(r.repoPath); err != nil {
-		return fmt.Errorf("unable to enter repo at location: %s", r.repoPath)
+func (r *SpokesReceivePack) Execute(ctx context.Context, g *governor.Conn) error {
+	if err := os.Chdir(r.RepoPath); err != nil {
+		return fmt.Errorf("unable to enter repo at location: %s", r.RepoPath)
 	}
 
 	// Reference discovery phase
@@ -276,15 +277,15 @@ func (r *SpokesReceivePack) getHiddenRefs() []string {
 }
 
 func (r *SpokesReceivePack) networkRepoPath() (string, error) {
-	alternatesPath := filepath.Join(r.repoPath, "objects", "info", "alternates")
+	alternatesPath := filepath.Join(r.RepoPath, "objects", "info", "alternates")
 	alternatesBytes, err := os.ReadFile(alternatesPath)
 	if err != nil {
-		return "", fmt.Errorf("could not read objects/info/alternates of '%s': %w", r.repoPath, err)
+		return "", fmt.Errorf("could not read objects/info/alternates of '%s': %w", r.RepoPath, err)
 	}
 	alternates := strings.TrimSuffix(string(alternatesBytes), "\n")
 
 	if !filepath.IsAbs(alternates) {
-		alternates, err = filepath.Abs(filepath.Join(r.repoPath, "objects", alternates))
+		alternates, err = filepath.Abs(filepath.Join(r.RepoPath, "objects", alternates))
 		if err != nil {
 			return "", fmt.Errorf("could not get absolute repo path: %w", err)
 		}
@@ -299,7 +300,7 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 		return "", fmt.Errorf("alternates path is not a directory: %v", alternates)
 	}
 
-	if !strings.HasPrefix(alternates, filepath.Dir(r.repoPath)) {
+	if !strings.HasPrefix(alternates, filepath.Dir(r.RepoPath)) {
 		return "", fmt.Errorf("alternates and repo are not in the same parent directory")
 	}
 
@@ -629,7 +630,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
 	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/tmp-objdir.c#L149-L153
 	return []string{
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.RepoPath, "objects")),
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
 		fmt.Sprintf("GIT_QUARANTINE_PATH=%s", r.quarantineFolder),
 	}
