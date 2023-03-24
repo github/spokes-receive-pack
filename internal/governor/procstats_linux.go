@@ -27,7 +27,10 @@ func getProcStats() procStats {
 			if err == nil {
 				fields := bytes.Fields(stat)
 				if len(fields) > 23 {
-					res.RSS, _ = strconv.ParseUint(fields[23], 10, 64)
+					val, err := strconv.ParseUint(string(fields[23]), 10, 64)
+					if err == nil {
+						res.RSS = val * uint64(pageSize)
+					}
 				}
 			}
 		}
@@ -79,10 +82,10 @@ func getPeakRSS() uint64 {
 		return 0
 	}
 
-	val, err := strconv.Parse(string(stat[i:]), 10, 64)
+	val, err := strconv.ParseUint(string(stat[i:]), 10, 64)
 	if err != nil {
 		return 0
 	}
 
-	return val
+	return val * 1024
 }
