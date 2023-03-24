@@ -132,6 +132,8 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 
 	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
 	cmd.Env = append(os.Environ(), "GIT_SOCKSTAT_PATH="+govSock)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
 
 	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(suite.T(), cmd.Run(),
@@ -146,7 +148,15 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	})
 	requireGovernorMessage(suite.T(), timeout, msgs, func(msg govMessage) {
 		assert.Equal(suite.T(), "finish", msg.Command)
-		assert.ElementsMatch(suite.T(), []string{"result_code", "receive_pack_size"}, keys(msg.Data))
+		// This varies by platform:
+		// assert.ElementsMatch(suite.T(), []string{
+		// 	"result_code",
+		// 	"receive_pack_size",
+		// 	"cpu",
+		// 	"rss",
+		// 	"read_bytes",
+		// 	"write_bytes",
+		// }, keys(msg.Data))
 		assert.Equal(suite.T(), float64(0), msg.Data["result_code"])
 		assert.Truef(suite.T(), msg.Data["receive_pack_size"].(float64) > 3000, "expect receive_pack_size (%v) to be at least 3000 bytes", msg.Data["receive_pack_size"])
 	})

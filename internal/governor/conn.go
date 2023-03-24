@@ -99,9 +99,23 @@ func (c *Conn) Finish(ctx context.Context) {
 		return
 	}
 
+	stats := getProcStats()
+	c.finish.CPU = stats.CPU
+	c.finish.RSS = stats.RSS
+	c.finish.DiskReadBytes = stats.DiskReadBytes
+	c.finish.DiskWriteBytes = stats.DiskWriteBytes
+
 	_ = finish(c.sock, c.finish)
+
 	c.sock.Close()
 	c.sock = nil
+}
+
+type procStats struct {
+	CPU            uint32
+	RSS            uint64
+	DiskReadBytes  uint64
+	DiskWriteBytes uint64
 }
 
 func connect(ctx context.Context) (net.Conn, error) {
