@@ -44,19 +44,19 @@ func getProcStats() procStats {
 			switch {
 			case strings.HasPrefix(line, readPrefix):
 				if val, err := strconv.ParseUint(line[len(readPrefix):], 10, 64); err != nil {
-					res.ReadBytes = val
+					res.DiskReadBytes = val
 				}
 			case strings.HasPrefix(line, writePrefix):
 				if val, err := strconv.ParseUint(line[len(writePrefix):], 10, 64); err != nil {
-					res.WriteBytes = val
+					res.DiskWriteBytes = val
 				}
 			case strings.HasPrefix(line, cancelledWritePrefix):
 				if val, err := strconv.ParseUint(line[len(cancelledWritePrefix):], 10, 64); err != nil {
 					// This always comes after write_bytes.
-					if val > res.WriteBytes {
-						res.WriteBytes = 0
+					if val > res.DiskWriteBytes {
+						res.DiskWriteBytes = 0
 					} else {
-						res.WriteBytes -= val
+						res.DiskWriteBytes -= val
 					}
 				}
 			}
