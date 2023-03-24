@@ -67,8 +67,8 @@ type updateData struct {
 	SSHConnection    string `json:"ssh_connection,omitempty"`
 	Babeld           string `json:"babeld,omitempty"`
 	GitProtocol      string `json:"git_protocol,omitempty"`
-	PubkeyVerifierID string `json:"pubkey_verifier_id,omitempty"`
-	PubkeyCreatorID  string `json:"pubkey_creator_id,omitempty"`
+	PubkeyVerifierID uint32 `json:"pubkey_verifier_id,omitempty"`
+	PubkeyCreatorID  uint32 `json:"pubkey_creator_id,omitempty"`
 }
 
 func update(w io.Writer, ud updateData) error {
@@ -120,43 +120,41 @@ func (err FailError) Error() string {
 func schedule(r *bufio.Reader, w io.Writer) error {
 	const msg = `{"command":"schedule"}`
 
-	for {
-		_, err := w.Write([]byte(msg))
-		if err != nil {
-			return err
-		}
+	_, err := w.Write([]byte(msg))
+	if err != nil {
+		return err
+	}
 
-		b, err := r.ReadBytes('\n')
-		if err != nil {
-			return err
-		}
+	b, err := r.ReadBytes('\n')
+	if err != nil {
+		return err
+	}
 
-		line := string(b[:len(b)-1])
+	line := string(b[:len(b)-1])
 
-		words := strings.SplitN(line, " ", 2)
-		switch words[0] {
-		case "continue":
-			return nil
-		case "wait":
-			duration := 1 * time.Second
-			if len(words) > 1 {
-				d, err := strconv.Atoi(words[1])
-				if err != nil {
-					log.Printf("warning: 'wait' duration %q could not be parsed", words[1])
-				} else {
-					duration = time.Duration(d) * time.Second
-				}
+	words := strings.SplitN(line, " ", 2)
+	switch words[0] {
+	case "continue":
+		return nil
+	case "wait":
+		duration := 1 * time.Second
+		if len(words) > 1 {
+			d, err := strconv.Atoi(words[1])
+			if err != nil {
+				log.Printf("warning: 'wait' duration %q could not be parsed", words[1])
+			} else {
+				duration = time.Duration(d) * time.Second
 			}
-			return newWaitError(duration)
-		case "fail":
-			reason := "UNKNOWN"
-			if len(words) > 1 {
-				reason = words[1]
-			}
-			return newFailError(reason)
-		default:
-			return fmt.Errorf("unexpected response %q from governor", line)
 		}
+		return newWaitError(duration)
+	case "fail":
+		reason := "UNKNOWN"
+		if len(words) > 1 {
+			reason = words[1]
+		}
+		return newFailError(reason)
+	default:
+		return fmt.Errorf("unexpected response %q from governor", line)
 	}
 }
 

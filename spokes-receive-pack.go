@@ -35,7 +35,10 @@ func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 		ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 		defer stop()
 
-		g := governor.Start(ctx)
+		g, err := governor.Start(ctx)
+		if err != nil {
+			return err
+		}
 		defer g.Finish(ctx)
 
 		rp, err := spokes.NewSpokesReceivePack(stdin, stdout, stderr, args, BuildVersion)
