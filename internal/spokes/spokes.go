@@ -50,14 +50,23 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
+	g, err := governor.Start(ctx, repoPath)
+	if err != nil {
+		return 75, err
+	}
+	defer g.Finish(ctx)
+
 	config, err := config.GetConfig(repoPath)
 	if err != nil {
+		g.SetError(1, err.Error())
 		return 1, err
 	}
 
 	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
 	if quarantineID == "" {
-		return 1, fmt.Errorf("missing required sockstat var quarantine_id")
+		err := fmt.Errorf("missing required sockstat var quarantine_id")
+		g.SetError(1, err.Error())
+		return 1, err
 	}
 
 	rp := &spokesReceivePack{
@@ -71,12 +80,6 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		advertiseRefs:    *httpBackendInfoRefs,
 		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
 	}
-
-	g, err := governor.Start(ctx, rp.repoPath)
-	if err != nil {
-		return 75, err
-	}
-	defer g.Finish(ctx)
 
 	if err := rp.execute(ctx, g); err != nil {
 		g.SetError(1, err.Error())
