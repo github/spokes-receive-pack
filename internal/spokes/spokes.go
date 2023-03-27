@@ -9,10 +9,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/github/go-pipe/pipe"
@@ -29,6 +31,30 @@ const (
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
 	nullSHA256OID       = "000000000000000000000000000000000000000000000000000000000000"
 )
+
+// Exec is similar to a main func for the new version of receive-pack.
+func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, args []string, version string) (int, error) {
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+
+	rp, err := NewSpokesReceivePack(stdin, stdout, stderr, args, version)
+	if err != nil {
+		return 1, err
+	}
+
+	g, err := governor.Start(ctx, rp.RepoPath)
+	if err != nil {
+		return 75, err
+	}
+	defer g.Finish(ctx)
+
+	if err := rp.Execute(ctx, g); err != nil {
+		g.SetError(1, err.Error())
+		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
+	}
+
+	return 0, nil
+}
 
 // SpokesReceivePack is used to model our own impl of the git-receive-pack
 type SpokesReceivePack struct {
