@@ -37,18 +37,18 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	rp, err := NewSpokesReceivePack(stdin, stdout, stderr, args, version)
+	rp, err := newSpokesReceivePack(stdin, stdout, stderr, args, version)
 	if err != nil {
 		return 1, err
 	}
 
-	g, err := governor.Start(ctx, rp.RepoPath)
+	g, err := governor.Start(ctx, rp.repoPath)
 	if err != nil {
 		return 75, err
 	}
 	defer g.Finish(ctx)
 
-	if err := rp.Execute(ctx, g); err != nil {
+	if err := rp.execute(ctx, g); err != nil {
 		g.SetError(1, err.Error())
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}
@@ -56,22 +56,21 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	return 0, nil
 }
 
-// SpokesReceivePack is used to model our own impl of the git-receive-pack
-type SpokesReceivePack struct {
-	RepoPath string
-
+// spokesReceivePack is used to model our own impl of the git-receive-pack
+type spokesReceivePack struct {
 	input            io.Reader
 	output           io.Writer
 	err              io.Writer
 	capabilities     string
+	repoPath         string
 	config           *config.Config
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
 }
 
-// NewSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []string, version string) (*SpokesReceivePack, error) {
+// newSpokesReceivePack returns a pointer to a SpokesReceivePack executor
+func newSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []string, version string) (*spokesReceivePack, error) {
 	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
 	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
 	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
@@ -95,12 +94,12 @@ func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []stri
 		return nil, fmt.Errorf("missing required sockstat var quarantine_id")
 	}
 
-	return &SpokesReceivePack{
+	return &spokesReceivePack{
 		input:            input,
 		output:           output,
 		err:              stderr,
 		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
-		RepoPath:         repoPath,
+		repoPath:         repoPath,
 		config:           config,
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
@@ -108,12 +107,12 @@ func NewSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []stri
 	}, nil
 }
 
-// Execute executes our custom implementation
+// execute executes our custom implementation
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
-func (r *SpokesReceivePack) Execute(ctx context.Context, g *governor.Conn) error {
-	if err := os.Chdir(r.RepoPath); err != nil {
-		return fmt.Errorf("unable to enter repo at location: %s", r.RepoPath)
+func (r *spokesReceivePack) execute(ctx context.Context, g *governor.Conn) error {
+	if err := os.Chdir(r.repoPath); err != nil {
+		return fmt.Errorf("unable to enter repo at location: %s", r.repoPath)
 	}
 
 	// Reference discovery phase
@@ -194,7 +193,7 @@ func (r *SpokesReceivePack) Execute(ctx context.Context, g *governor.Conn) error
 	return nil
 }
 
-func (r *SpokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
+func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
@@ -216,7 +215,7 @@ func (r *SpokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 // performReferenceDiscovery performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
-func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
+func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
 	hiddenRefs := r.getHiddenRefs()
 
 	references := make([][]byte, 0, 100)
@@ -297,23 +296,23 @@ func (r *SpokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	return nil
 }
 
-func (r *SpokesReceivePack) getHiddenRefs() []string {
+func (r *spokesReceivePack) getHiddenRefs() []string {
 	var hiddenRefs []string
 	hiddenRefs = append(hiddenRefs, r.config.GetAll("receive.hiderefs")...)
 	hiddenRefs = append(hiddenRefs, r.config.GetAll("transfer.hiderefs")...)
 	return hiddenRefs
 }
 
-func (r *SpokesReceivePack) networkRepoPath() (string, error) {
-	alternatesPath := filepath.Join(r.RepoPath, "objects", "info", "alternates")
+func (r *spokesReceivePack) networkRepoPath() (string, error) {
+	alternatesPath := filepath.Join(r.repoPath, "objects", "info", "alternates")
 	alternatesBytes, err := os.ReadFile(alternatesPath)
 	if err != nil {
-		return "", fmt.Errorf("could not read objects/info/alternates of '%s': %w", r.RepoPath, err)
+		return "", fmt.Errorf("could not read objects/info/alternates of '%s': %w", r.repoPath, err)
 	}
 	alternates := strings.TrimSuffix(string(alternatesBytes), "\n")
 
 	if !filepath.IsAbs(alternates) {
-		alternates, err = filepath.Abs(filepath.Join(r.RepoPath, "objects", alternates))
+		alternates, err = filepath.Abs(filepath.Join(r.repoPath, "objects", alternates))
 		if err != nil {
 			return "", fmt.Errorf("could not get absolute repo path: %w", err)
 		}
@@ -328,7 +327,7 @@ func (r *SpokesReceivePack) networkRepoPath() (string, error) {
 		return "", fmt.Errorf("alternates path is not a directory: %v", alternates)
 	}
 
-	if !strings.HasPrefix(alternates, filepath.Dir(r.RepoPath)) {
+	if !strings.HasPrefix(alternates, filepath.Dir(r.repoPath)) {
 		return "", fmt.Errorf("alternates and repo are not in the same parent directory")
 	}
 
@@ -408,7 +407,7 @@ func (c *command) isUpdate() bool {
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
-func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string, pktline.Capabilities, error) {
+func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string, pktline.Capabilities, error) {
 	var commands []command
 	var shallowInfo []string
 
@@ -479,7 +478,7 @@ func (r *SpokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities, g *governor.Conn) error {
+func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities, g *governor.Conn) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
@@ -593,14 +592,14 @@ func (r *SpokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	return nil
 }
 
-func (r *SpokesReceivePack) isReportStatusFFConfigEnabled() bool {
+func (r *spokesReceivePack) isReportStatusFFConfigEnabled() bool {
 	reportStatusFF := r.config.Get("receive.reportStatusFF")
 
 	return reportStatusFF == "true"
 
 }
 
-func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
+func (r *spokesReceivePack) isFsckConfigEnabled() bool {
 	receiveFsck := r.config.Get("receive.fsckObjects")
 	transferFsck := r.config.Get("transfer.fsckObjects")
 
@@ -611,7 +610,7 @@ func (r *SpokesReceivePack) isFsckConfigEnabled() bool {
 	return false
 }
 
-func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
+func (r *spokesReceivePack) getMaxInputSize() (int, error) {
 	maxSize := r.config.Get("receive.maxsize")
 
 	if maxSize != "" {
@@ -621,7 +620,7 @@ func (r *SpokesReceivePack) getMaxInputSize() (int, error) {
 	return 0, nil
 }
 
-func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
+func (r *spokesReceivePack) getWarnObjectSize() (int, error) {
 	warnObjectSize := r.config.Get("receive.warnobjectsize")
 
 	if warnObjectSize != "" {
@@ -631,7 +630,7 @@ func (r *SpokesReceivePack) getWarnObjectSize() (int, error) {
 	return 0, nil
 }
 
-func (r *SpokesReceivePack) getRefUpdateCommandLimit() (int, error) {
+func (r *spokesReceivePack) getRefUpdateCommandLimit() (int, error) {
 	refUpdateCommandLimit := r.config.Get("receive.refupdatecommandlimit")
 
 	if refUpdateCommandLimit != "" {
@@ -685,23 +684,23 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 	return &eg, nil
 }
 
-func (r *SpokesReceivePack) getAlternateObjectDirsEnv() []string {
+func (r *spokesReceivePack) getAlternateObjectDirsEnv() []string {
 	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/tmp-objdir.c#L149-L153
 	return []string{
-		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.RepoPath, "objects")),
+		fmt.Sprintf("GIT_ALTERNATE_OBJECT_DIRECTORIES=%s", filepath.Join(r.repoPath, "objects")),
 		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
 		fmt.Sprintf("GIT_QUARANTINE_PATH=%s", r.quarantineFolder),
 	}
 }
 
-func (r *SpokesReceivePack) makeQuarantineDirs() error {
+func (r *spokesReceivePack) makeQuarantineDirs() error {
 	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0700)
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
 // closed under reachability, stopping the traversal at any objects
 // reachable from the pre-existing reference values.
-func (r *SpokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
+func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
 	nonRejectedCommands := filterNonRejectedCommands(commands)
 	if len(nonRejectedCommands) == 0 {
 		// all the commands have been previously rejected so there is no need to perform
@@ -775,7 +774,7 @@ func filterNonRejectedCommands(commands []command) []command {
 	return nonRejectedCommands
 }
 
-func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
+func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
 	cmd := exec.CommandContext(
 		ctx,
 		"git",
@@ -799,7 +798,7 @@ func (r *SpokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 }
 
 // report the success/failure of the push operation to the client
-func (r *SpokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
+func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
 	var buf bytes.Buffer
 	if unpackOK {
 		if err := writePacketLine(&buf, []byte("unpack ok\n")); err != nil {
