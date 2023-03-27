@@ -37,9 +37,39 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 
-	rp, err := newSpokesReceivePack(stdin, stdout, stderr, args, version)
+	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
+	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
+	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
+	flag.Parse()
+
+	if flag.NArg() != 1 {
+		return 1, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
+	}
+	repoPath, err := filepath.Abs(flag.Args()[0])
 	if err != nil {
 		return 1, err
+	}
+
+	config, err := config.GetConfig(repoPath)
+	if err != nil {
+		return 1, err
+	}
+
+	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
+	if quarantineID == "" {
+		return 1, fmt.Errorf("missing required sockstat var quarantine_id")
+	}
+
+	rp := &spokesReceivePack{
+		input:            stdin,
+		output:           stdout,
+		err:              stderr,
+		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
+		repoPath:         repoPath,
+		config:           config,
+		statelessRPC:     *statelessRPC,
+		advertiseRefs:    *httpBackendInfoRefs,
+		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
 	}
 
 	g, err := governor.Start(ctx, rp.repoPath)
@@ -67,44 +97,6 @@ type spokesReceivePack struct {
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
-}
-
-// newSpokesReceivePack returns a pointer to a SpokesReceivePack executor
-func newSpokesReceivePack(input io.Reader, output, stderr io.Writer, args []string, version string) (*spokesReceivePack, error) {
-	statelessRPC := flag.Bool("stateless-rpc", false, "Indicates we are using the HTTP protocol")
-	httpBackendInfoRefs := flag.Bool("http-backend-info-refs", false, "Indicates we only need to announce the references")
-	flag.BoolVar(httpBackendInfoRefs, "advertise-refs", *httpBackendInfoRefs, "alias of --http-backend-info-refs")
-	flag.Parse()
-
-	if flag.NArg() != 1 {
-		return nil, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
-	}
-	repoPath, err := filepath.Abs(flag.Args()[0])
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := config.GetConfig(repoPath)
-	if err != nil {
-		return nil, err
-	}
-
-	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
-	if quarantineID == "" {
-		return nil, fmt.Errorf("missing required sockstat var quarantine_id")
-	}
-
-	return &spokesReceivePack{
-		input:            input,
-		output:           output,
-		err:              stderr,
-		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
-		repoPath:         repoPath,
-		config:           config,
-		statelessRPC:     *statelessRPC,
-		advertiseRefs:    *httpBackendInfoRefs,
-		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
-	}, nil
 }
 
 // execute executes our custom implementation
