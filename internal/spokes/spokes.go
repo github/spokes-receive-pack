@@ -79,9 +79,10 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
 		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
+		governor:         g,
 	}
 
-	if err := rp.execute(ctx, g); err != nil {
+	if err := rp.execute(ctx); err != nil {
 		g.SetError(1, err.Error())
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}
@@ -100,12 +101,13 @@ type spokesReceivePack struct {
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
+	governor         *governor.Conn
 }
 
 // execute executes our custom implementation
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
-func (r *spokesReceivePack) execute(ctx context.Context, g *governor.Conn) error {
+func (r *spokesReceivePack) execute(ctx context.Context) error {
 	if err := os.Chdir(r.repoPath); err != nil {
 		return fmt.Errorf("unable to enter repo at location: %s", r.repoPath)
 	}
@@ -141,7 +143,7 @@ func (r *spokesReceivePack) execute(ctx context.Context, g *governor.Conn) error
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
-	if unpackErr = r.readPack(ctx, commands, capabilities, g); unpackErr != nil {
+	if unpackErr = r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
 			commands[i].err = fmt.Sprintf("error processing packfiles: %s", unpackErr.Error())
 			commands[i].reportFF = "ng"
@@ -473,7 +475,7 @@ func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
-func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities, g *governor.Conn) error {
+func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
@@ -577,7 +579,7 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			packID := string(bytes.TrimSpace(out[5:]))
 			packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
 			if info, err := os.Stat(packPath); err == nil {
-				g.SetReceivePackSize(info.Size())
+				r.governor.SetReceivePackSize(info.Size())
 			}
 		}
 	case <-time.After(time.Second):
