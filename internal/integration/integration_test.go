@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -164,43 +165,22 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	})
 }
 
+// start a governor instance that sends all messages from spokes-receive-pack
+// to a returned channel. It allows all callers to continue.
 func startFakeGovernor(t *testing.T) (string, <-chan govMessage, func()) {
 	tmpdir, err := os.MkdirTemp("", "spokes-receive-pack-governor-*")
 	require.NoError(t, err)
-	cleanup := func() { os.RemoveAll(tmpdir) }
 
 	sockpath := filepath.Join(tmpdir, "gov.sock")
 	t.Logf("fake gov listening on %s", sockpath)
 	l, err := net.Listen("unix", sockpath)
 	require.NoError(t, err)
 
+	cleanup := func() { os.RemoveAll(tmpdir); l.Close() }
+
 	msgs := make(chan govMessage, 2)
-	go func() {
-		defer l.Close()
-		defer close(msgs)
-		conn, err := l.Accept()
-		if err != nil {
-			t.Logf("gov: accept error: %v", err)
-			return
-		}
-		t.Logf("gov accepted on %s", sockpath)
-		decoder := json.NewDecoder(conn)
-		for {
-			var msg govMessage
-			err := decoder.Decode(&msg)
-			if err != nil {
-				if err != io.EOF {
-					t.Logf("gov: read error: %v", err)
-				}
-				break
-			}
-			if msg.Command == "schedule" {
-				conn.Write([]byte("continue\n"))
-			} else {
-				msgs <- msg
-			}
-		}
-	}()
+	gov := &fakeGov{l, msgs, 0}
+	go gov.accept(t)
 
 	return sockpath, msgs, cleanup
 }
@@ -226,6 +206,57 @@ func keys(m map[string]interface{}) []string {
 		res = append(res, k)
 	}
 	return res
+}
+
+type fakeGov struct {
+	l                      net.Listener
+	msgs                   chan<- govMessage
+	foundSpokesReceivePack uint32
+}
+
+func (f *fakeGov) accept(t *testing.T) {
+	for {
+		conn, err := f.l.Accept()
+		if err != nil {
+			t.Logf("gov: accept error: %v", err)
+			return
+		}
+		t.Logf("gov accepted connection %p", conn)
+		go f.handle(t, conn)
+	}
+}
+
+func (f *fakeGov) handle(t *testing.T, conn net.Conn) {
+	defer conn.Close()
+
+	isSpokesReceivePack := false
+
+	decoder := json.NewDecoder(conn)
+	for {
+		var msg govMessage
+		err := decoder.Decode(&msg)
+		if err != nil {
+			if err != io.EOF {
+				t.Logf("%p: gov: read error: %v", conn, err)
+			}
+			break
+		}
+		if msg.Command == "schedule" {
+			conn.Write([]byte("continue\n"))
+			continue
+		}
+		if msg.Command == "update" {
+			program, _ := msg.Data["program"]
+			if program == "spokes-receive-pack" {
+				if atomic.CompareAndSwapUint32(&f.foundSpokesReceivePack, 0, 1) {
+					isSpokesReceivePack = true
+				}
+			}
+		}
+		if isSpokesReceivePack {
+			f.msgs <- msg
+		}
+	}
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithExtraReceiveOptions() {
