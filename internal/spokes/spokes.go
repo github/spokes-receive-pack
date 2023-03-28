@@ -215,19 +215,34 @@ func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
 	hiddenRefs := r.getHiddenRefs()
 
-	references := make([][]byte, 0, 100)
+	var wroteCapabilities bool
+	advertiseRef := func(line []byte) error {
+		// Ignore the current line if it is a hidden ref
+		if isHiddenRef(string(line), hiddenRefs) {
+			return nil
+		}
+
+		if wroteCapabilities {
+			if err := writePacketf(r.output, "%s\n", line); err != nil {
+				return fmt.Errorf("writing ref advertisement packet: %w", err)
+			}
+		} else {
+			wroteCapabilities = true
+			if err := writePacketf(r.output, "%s\x00%s\n", line, r.capabilities); err != nil {
+				return fmt.Errorf("writing capability packet: %w", err)
+			}
+		}
+
+		return nil
+	}
+
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
 	p.Add(
 		pipe.Command("git", "for-each-ref", "--format=%(objectname) %(refname)"),
 		pipe.LinewiseFunction(
 			"collect-references",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
-				// Ignore the current line if it is a hidden ref
-				if !isHiddenRef(string(line), hiddenRefs) {
-					references = append(references, line)
-				}
-
-				return nil
+				return advertiseRef(line)
 			},
 		),
 	)
@@ -254,12 +269,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 				pipe.LinewiseFunction(
 					"collect-alternates-references",
 					func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
-						// Ignore the current line if it is a hidden ref
-						if !isHiddenRef(string(line), hiddenRefs) {
-							references = append(references, line)
-						}
-
-						return nil
+						return advertiseRef(line)
 					},
 				),
 			)
@@ -270,17 +280,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		return fmt.Errorf("collecting references: %w", err)
 	}
 
-	if len(references) > 0 {
-		if err := writePacketf(r.output, "%s\x00%s\n", references[0], r.capabilities); err != nil {
-			return fmt.Errorf("writing capability packet: %w", err)
-		}
-
-		for i := 1; i < len(references); i++ {
-			if err := writePacketf(r.output, "%s\n", references[i]); err != nil {
-				return fmt.Errorf("writing ref advertisement packet: %w", err)
-			}
-		}
-	} else {
+	if !wroteCapabilities {
 		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, r.capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
