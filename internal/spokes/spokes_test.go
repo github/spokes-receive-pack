@@ -9,6 +9,7 @@ import (
 
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckHiddenRefs(t *testing.T) {
@@ -252,8 +253,8 @@ const expectedReferenceList = `00466a9ee41101de417acd4db5b7a18b66a5e1b54496 refs
 0000`
 
 func TestPerformReferenceDiscovery(t *testing.T) {
-	os.Chdir("testdata/lots-of-refs.git")
-	t.Cleanup(func() { os.Chdir("../..") })
+	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
+	t.Cleanup(func() { _ = os.Chdir("../..") })
 
 	var buf bytes.Buffer
 	wd, _ := os.Getwd()
