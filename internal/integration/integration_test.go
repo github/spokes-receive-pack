@@ -24,6 +24,14 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+var testRoot = func() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return wd
+}()
+
 const bogusCommit = `tree %s
 author Spokes Receive Pack 1234567890 +0000
 committer Spokes Receive Pack <spokes@receive.pack> 1234567890 +0000
@@ -95,6 +103,7 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 	require := require.New(suite.T())
 
 	// Clean the environment before exiting
+	require.NoError(os.Chdir(testRoot))
 	require.NoError(os.RemoveAll(suite.remoteRepo))
 	require.NoError(os.RemoveAll(suite.localRepo))
 	require.NoError(os.RemoveAll(suite.shallowClone))

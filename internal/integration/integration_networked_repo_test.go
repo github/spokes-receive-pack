@@ -55,6 +55,7 @@ func (suite *SpokesReceivePackNetworkedTestSuite) TearDownTest() {
 	require := require.New(suite.T())
 
 	// Clean the environment before exiting
+	require.NoError(os.Chdir(testRoot))
 	require.NoError(os.RemoveAll(suite.clone))
 	require.NoError(os.RemoveAll("../testdata/remote/git-internals-fork.git/objects/quarantine"))
 }
