@@ -723,6 +723,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--not",
 		"--exclude-hidden=receive",
 		"--all",
+		"--alternate-refs",
 	)
 	cmd.Stderr = devNull
 	cmd.Env = append([]string{}, os.Environ()...)
