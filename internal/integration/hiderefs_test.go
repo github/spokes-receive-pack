@@ -42,9 +42,9 @@ func TestHiderefsConfig(t *testing.T) {
 		// This needs to be reachable from refs/heads/main
 		testCommit = "e589bdee50e39beac56220c4b7a716225f79e3cf"
 
-		gitConfigParameters = "'transfer.hideRefs=refs/__transferhiderefs2' " +
-			"'transfer.hideRefs=\\!refs/__transferhiderefs2/exception' " +
-			"'receive.hideRefs=refs/__receivehiderefs2'"
+		gitConfigParameters = `'transfer.hideRefs=refs/__transferhiderefs2' ` +
+			`'transfer.hideRefs='\!'refs/__transferhiderefs2/exception' ` +
+			`'receive.hideRefs=refs/__receivehiderefs2'`
 	)
 
 	wd, err := os.Getwd()
