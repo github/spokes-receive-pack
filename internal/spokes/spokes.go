@@ -217,8 +217,13 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 
 	var wroteCapabilities bool
 	advertiseRef := func(line []byte) error {
+		if len(line) < 41 {
+			return fmt.Errorf("malformed ref line: %q", string(line))
+		}
+
 		// Ignore the current line if it is a hidden ref
-		if isHiddenRef(string(line), hiddenRefs) {
+		ref := strings.TrimSuffix(string(line[41:]), "\n")
+		if ref != ".have" && isHiddenRef(ref, hiddenRefs) {
 			return nil
 		}
 
