@@ -69,7 +69,10 @@ func TestHiderefsConfig(t *testing.T) {
 
 	srp := exec.CommandContext(ctx, "spokes-receive-pack", ".")
 	srp.Dir = testRepo
-	srp.Env = append(os.Environ(), "GIT_CONFIG_PARAMETERS="+gitConfigParameters)
+	srp.Env = append(os.Environ(),
+		"GIT_CONFIG_PARAMETERS="+gitConfigParameters,
+		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
+		"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
 	srp.Stderr = os.Stderr
 	srpIn, err := srp.StdinPipe()
 	require.NoError(t, err)
