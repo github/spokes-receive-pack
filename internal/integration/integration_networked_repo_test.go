@@ -28,7 +28,7 @@ func (suite *SpokesReceivePackNetworkedTestSuite) SetupTest() {
 
 	// go into the clone
 	wd, _ := os.Getwd()
-	req.NoError(os.Chdir(clone), "unable to chdir from %s into the recently cloned repo at %s", wd, clone)
+	req.NoError(chdir(suite.T(), clone), "unable to chdir from %s into the recently cloned repo at %s", wd, clone)
 	// init and config the local Git repo
 	req.NoError(exec.Command("git", "init").Run())
 	req.NoError(exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
@@ -60,7 +60,7 @@ func (suite *SpokesReceivePackNetworkedTestSuite) TearDownTest() {
 }
 
 func (suite *SpokesReceivePackNetworkedTestSuite) TestSpokesReceivePackPushFork() {
-	assert.NoError(suite.T(), os.Chdir(suite.clone), "unable to chdir into our local clone of a fork at %s", suite.clone)
+	assert.NoError(suite.T(), chdir(suite.T(), suite.clone), "unable to chdir into our local clone of a fork at %s", suite.clone)
 	assert.NoError(
 		suite.T(),
 		exec.Command(
