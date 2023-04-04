@@ -140,6 +140,13 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
+	if capabilities.HasPushOptions() {
+		// We don't use push-options here.
+		if err := r.dumpPushOptions(ctx); err != nil {
+			return err
+		}
+	}
+
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
 	var unpackErr error
@@ -476,6 +483,21 @@ func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	}
 
 	return commands, shallowInfo, capabilities, nil
+}
+
+func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) error {
+	pl := pktline.New()
+
+	for {
+		err := pl.Read(r.input)
+		if err != nil {
+			return fmt.Errorf("error reading push-options: %w", err)
+		}
+
+		if pl.IsFlush() {
+			return nil
+		}
+	}
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
