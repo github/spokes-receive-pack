@@ -112,18 +112,15 @@ func TestHiderefsConfig(t *testing.T) {
 	_, err = srpIn.Write([]byte("0000"))
 	require.NoError(t, err)
 
+	// Send an empty pack, since we're using commits that are already in
+	// the repo.
 	packObjects := exec.CommandContext(ctx, "git", "-C", testRepo, "pack-objects", "--all-progress-implied", "--revs", "--stdout", "--thin", "--delta-base-offset", "--progress")
-	// no stdin
 	packObjects.Stderr = os.Stderr
 	pack, err := packObjects.StdoutPipe()
 	require.NoError(t, err)
 	go packObjects.Run()
 	_, err = io.Copy(srpIn, pack)
 	require.NoError(t, err)
-
-	// No packfile, we're updating with objects that are already there and
-	// don't need a pack for this test.
-	require.NoError(t, srpIn.Close())
 
 	refStatus, unpackRes, _, err := readResult(bufSRPOut)
 	require.NoError(t, err)
