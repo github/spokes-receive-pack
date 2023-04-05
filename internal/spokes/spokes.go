@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -574,7 +575,9 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		defer close(indexPackOut)
 		defer r.Close()
 		out, err := io.ReadAll(r)
-		if err == nil {
+		if err != nil {
+			log.Printf("error reading index-pack output: %v", err)
+		} else {
 			indexPackOut <- out
 		}
 	}(stdout, indexPackOut)
@@ -608,9 +611,12 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			if info, err := os.Stat(packPath); err == nil {
 				r.governor.SetReceivePackSize(info.Size())
 			}
+		} else {
+			log.Printf("index-pack exited without telling us its packfile (%s)", out)
 		}
 	case <-time.After(time.Second):
 		// For some reason, index-pack's output isn't available. Just move on...
+		log.Print("index-pack output was too slow")
 	}
 
 	return nil
