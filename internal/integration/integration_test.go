@@ -158,9 +158,9 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 		// 	"write_bytes",
 		// }, keys(msg.Data))
 		assert.Equal(suite.T(), float64(0), msg.Data["result_code"])
-		assert.Truef(suite.T(), msg.Data["receive_pack_size"].(float64) > 0, "expect receive_pack_size (%v) to be more than 0", msg.Data["receive_pack_size"])
-		assert.Truef(suite.T(), msg.Data["cpu"].(float64) > 0, "expect cpu (%v) to be more than 0", msg.Data["cpu"])
-		assert.Truef(suite.T(), msg.Data["rss"].(float64) > 0, "expect rss (%v) to be more than 0", msg.Data["rss"])
+		assert.Greaterf(suite.T(), msg.Data["receive_pack_size"], float64(0), "expect receive_pack_size (%v) to be more than 0", msg.Data["receive_pack_size"])
+		assert.Greaterf(suite.T(), msg.Data["cpu"], float64(0), "expect cpu (%v) to be more than 0", msg.Data["cpu"])
+		assert.Greaterf(suite.T(), msg.Data["rss"], float64(0), "expect rss (%v) to be more than 0", msg.Data["rss"])
 	})
 }
 
