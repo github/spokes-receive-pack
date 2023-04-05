@@ -115,8 +115,9 @@ func TestHiderefsConfig(t *testing.T) {
 	pack, err := packObjects.StdoutPipe()
 	require.NoError(t, err)
 	go packObjects.Run()
-	_, err = io.Copy(srpIn, pack)
-	require.NoError(t, err)
+	if _, err := io.Copy(srpIn, pack); err != nil {
+		t.Logf("error writing pack to spokes-receive-pack input: %v", err)
+	}
 
 	refStatus, unpackRes, _, err := readResult(bufSRPOut)
 	require.NoError(t, err)

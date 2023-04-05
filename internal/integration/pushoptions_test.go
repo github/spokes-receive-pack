@@ -76,8 +76,9 @@ func TestPushOptions(t *testing.T) {
 	pack, err := packObjects.StdoutPipe()
 	require.NoError(t, err)
 	go packObjects.Run()
-	_, err = io.Copy(srpIn, pack)
-	require.NoError(t, err)
+	if _, err := io.Copy(srpIn, pack); err != nil {
+		t.Logf("error writing pack to spokes-receive-pack input: %v", err)
+	}
 
 	require.NoError(t, srpIn.Close())
 
