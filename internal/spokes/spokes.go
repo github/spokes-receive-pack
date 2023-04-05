@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -138,6 +139,13 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	}
 	if len(commands) == 0 {
 		return nil
+	}
+
+	if capabilities.HasPushOptions() {
+		// We don't use push-options here.
+		if err := r.dumpPushOptions(ctx); err != nil {
+			return err
+		}
 	}
 
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
@@ -478,6 +486,21 @@ func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	return commands, shallowInfo, capabilities, nil
 }
 
+func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) error {
+	pl := pktline.New()
+
+	for {
+		err := pl.Read(r.input)
+		if err != nil {
+			return fmt.Errorf("error reading push-options: %w", err)
+		}
+
+		if pl.IsFlush() {
+			return nil
+		}
+	}
+}
+
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
 // Report errors to the error sideband in `w`.
 func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, capabilities pktline.Capabilities) error {
@@ -552,7 +575,9 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		defer close(indexPackOut)
 		defer r.Close()
 		out, err := io.ReadAll(r)
-		if err == nil {
+		if err != nil {
+			log.Printf("error reading index-pack output: %v", err)
+		} else {
 			indexPackOut <- out
 		}
 	}(stdout, indexPackOut)
@@ -586,9 +611,12 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 			if info, err := os.Stat(packPath); err == nil {
 				r.governor.SetReceivePackSize(info.Size())
 			}
+		} else {
+			log.Printf("index-pack exited without telling us its packfile (%s)", out)
 		}
 	case <-time.After(time.Second):
 		// For some reason, index-pack's output isn't available. Just move on...
+		log.Print("index-pack output was too slow")
 	}
 
 	return nil

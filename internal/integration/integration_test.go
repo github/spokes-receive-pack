@@ -47,7 +47,7 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 	remoteRepo, err := os.MkdirTemp("", "remote")
 	req.NoError(err, "unable to create the remote repository directory")
 
-	req.NoError(os.Chdir(localRepo), "unable to chdir new local Git repo")
+	req.NoError(chdir(suite.T(), localRepo), "unable to chdir new local Git repo")
 
 	// init and config the local Git repo
 	req.NoError(exec.Command("git", "init").Run())
@@ -75,7 +75,7 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 
 	// configure the remote
 	req.NoError(exec.Command("git", "remote", "add", "r", remoteRepo).Run())
-	req.NoError(os.Chdir(remoteRepo), "unable to chdir to project base directory")
+	req.NoError(chdir(suite.T(), remoteRepo), "unable to chdir to project base directory")
 
 	req.NoError(exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run())
 
@@ -100,7 +100,7 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 }
 
 func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
 		exec.Command(
@@ -109,7 +109,7 @@ func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
 		exec.Command(
@@ -118,7 +118,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSimplePush() {
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
 		exec.Command(
@@ -135,7 +135,7 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(suite.T(), cmd.Run(),
 		"unexpected error running the push with the custom spokes-receive-pack program")
 
@@ -158,9 +158,9 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 		// 	"write_bytes",
 		// }, keys(msg.Data))
 		assert.Equal(suite.T(), float64(0), msg.Data["result_code"])
-		assert.Truef(suite.T(), msg.Data["receive_pack_size"].(float64) > 0, "expect receive_pack_size (%v) to be more than 0", msg.Data["receive_pack_size"])
-		assert.Truef(suite.T(), msg.Data["cpu"].(float64) > 0, "expect cpu (%v) to be more than 0", msg.Data["cpu"])
-		assert.Truef(suite.T(), msg.Data["rss"].(float64) > 0, "expect rss (%v) to be more than 0", msg.Data["rss"])
+		assert.Greaterf(suite.T(), msg.Data["receive_pack_size"], float64(0), "expect receive_pack_size (%v) to be more than 0", msg.Data["receive_pack_size"])
+		assert.Greaterf(suite.T(), msg.Data["cpu"], float64(0), "expect cpu (%v) to be more than 0", msg.Data["cpu"])
+		assert.Greaterf(suite.T(), msg.Data["rss"], float64(0), "expect rss (%v) to be more than 0", msg.Data["rss"])
 	})
 }
 
@@ -229,14 +229,14 @@ func keys(m map[string]interface{}) []string {
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithExtraReceiveOptions() {
-	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
 	// This value is the default value we set in our production config
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "2147483648").Run())
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "10").Run())
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.reportStatusFF", "true").Run())
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	assert.NoError(
 		suite.T(),
 		exec.Command(
@@ -245,11 +245,11 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithEx
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMaxSize() {
-	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	// Set a really low value to receive.maxsize in order to make it fail
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "1").Run())
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	out, err := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").CombinedOutput()
 	assert.Error(
 		suite.T(),
@@ -260,11 +260,11 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMa
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailRefUpdateCommandLimit() {
-	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	// Set a low value to receive.refupdatecommandlimit in order to make it fail
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.refupdatecommandlimit", "1").Run())
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	out, err := exec.Command(
 		"git",
 		"push",
@@ -283,11 +283,11 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailRe
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsckObject() {
-	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	// Enable the `receive.fsckObjects option
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 
 	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, out []byte) {
 		assert.Error(
@@ -300,11 +300,11 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectFailFsc
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceedFsckObject() {
-	assert.NoError(suite.T(), os.Chdir(suite.remoteRepo), "unable to chdir into our remote Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	// Disable the `receive.fsckObjects option
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "false").Run())
 
-	assert.NoError(suite.T(), os.Chdir(suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 
 	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, _ []byte) {
 		assert.NoError(
@@ -315,7 +315,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClone() {
-	assert.NoError(suite.T(), os.Chdir(suite.shallowClone), "unable to chdir into our local shallow clone")
+	assert.NoError(suite.T(), chdir(suite.T(), suite.shallowClone), "unable to chdir into our local shallow clone")
 
 	out, err := exec.Command(
 		"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test").CombinedOutput()
