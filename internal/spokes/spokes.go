@@ -190,7 +190,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	}
 
 	if capabilities.IsDefined(pktline.ReportStatusV2) || capabilities.IsDefined(pktline.ReportStatus) {
-		if err := r.report(ctx, unpackErr == nil, commands); err != nil {
+		if err := r.report(ctx, unpackErr == nil, commands, capabilities); err != nil {
 			return err
 		}
 	}
@@ -825,38 +825,53 @@ func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 }
 
 // report the success/failure of the push operation to the client
-func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
-	var buf bytes.Buffer
+func writeReport(w io.Writer, unpackOK bool, commands []command) error {
 	if unpackOK {
-		if err := writePacketLine(&buf, []byte("unpack ok\n")); err != nil {
+		if err := writePacketLine(w, []byte("unpack ok\n")); err != nil {
 			return err
 		}
 	} else {
-		if err := writePacketLine(&buf, []byte("unpack index-pack failed\n")); err != nil {
+		if err := writePacketLine(w, []byte("unpack index-pack failed\n")); err != nil {
 			return err
 		}
 	}
 	for _, c := range commands {
 		if c.err != "" {
-			if err := writePacketf(&buf, "ng %s %s\n", c.refname, c.err); err != nil {
+			if err := writePacketf(w, "ng %s %s\n", c.refname, c.err); err != nil {
 				return err
 			}
 		} else {
-			if err := writePacketf(&buf, "%s %s\n", c.reportFF, c.refname); err != nil {
+			if err := writePacketf(w, "%s %s\n", c.reportFF, c.refname); err != nil {
 				return err
 			}
 			// FIXME? if statusV2, maybe also write option refname, option old-oid, option new-oid, option forced-update
 		}
 	}
 
-	if _, err := fmt.Fprint(&buf, "0000"); err != nil {
+	if _, err := fmt.Fprint(w, "0000"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []command, capabilities pktline.Capabilities) error {
+	if !useSideBand(capabilities) {
+		return writeReport(r.output, unpackOK, commands)
+	}
+
+	var buf bytes.Buffer
+
+	if err := writeReport(&buf, unpackOK, commands); err != nil {
 		return err
 	}
 
 	output := buf.Bytes()
 
+	packetMax := sideBandBufSize(capabilities)
+
 	for len(output) > 0 {
-		n := 4096
+		n := packetMax - 5
 		if len(output) < n {
 			n = len(output)
 		}
@@ -865,9 +880,11 @@ func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 		}
 		output = output[n:]
 	}
+
 	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
 		return nil
 	}
+
 	return nil
 }
 
