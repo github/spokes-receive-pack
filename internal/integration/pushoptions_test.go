@@ -79,7 +79,7 @@ func TestPushOptions(t *testing.T) {
 
 	require.NoError(t, srpIn.Close())
 
-	refStatus, unpackRes, _, err := readResult(bufSRPOut)
+	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
 		createBranch: "ok",

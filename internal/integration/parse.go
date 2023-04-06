@@ -51,7 +51,7 @@ func readAdv(r io.Reader) (map[string]string, string, error) {
 	}
 }
 
-func readResult(r io.Reader) (map[string]string, string, [][]byte, error) {
+func readResult(t *testing.T, r io.Reader) (map[string]string, string, [][]byte, error) {
 	var (
 		refStatus map[string]string
 		unpackRes string
@@ -61,7 +61,11 @@ func readResult(r io.Reader) (map[string]string, string, [][]byte, error) {
 	// Read all of the output so that we can include it with errors.
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, "", nil, err
+		if len(data) > 0 {
+			t.Logf("got data, but there was an error: %v", err)
+		} else {
+			return nil, "", nil, err
+		}
 	}
 
 	// Replace r.

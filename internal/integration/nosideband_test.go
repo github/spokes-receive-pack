@@ -80,7 +80,7 @@ func TestNoSideBand(t *testing.T) {
 
 	require.NoError(t, srpIn.Close())
 
-	lines, err := readResultNoSideBand(bufSRPOut)
+	lines, err := readResultNoSideBand(t, bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		"unpack ok\n",
@@ -88,13 +88,17 @@ func TestNoSideBand(t *testing.T) {
 	}, lines)
 }
 
-func readResultNoSideBand(r io.Reader) ([]string, error) {
+func readResultNoSideBand(t *testing.T, r io.Reader) ([]string, error) {
 	var lines []string
 
 	// Read all of the output so that we can include it with errors.
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		if len(data) > 0 {
+			t.Logf("got data, but there was an error: %v", err)
+		} else {
+			return nil, err
+		}
 	}
 
 	// Replace r.

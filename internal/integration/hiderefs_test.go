@@ -116,7 +116,7 @@ func TestHiderefsConfig(t *testing.T) {
 		t.Logf("error writing pack to spokes-receive-pack input: %v", err)
 	}
 
-	refStatus, unpackRes, _, err := readResult(bufSRPOut)
+	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
 		createBranch:         "ok",
