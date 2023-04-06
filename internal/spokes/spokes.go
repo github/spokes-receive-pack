@@ -141,7 +141,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
-	if capabilities.HasPushOptions() {
+	if capabilities.IsDefined(pktline.PushOptions) {
 		// We don't use push-options here.
 		if err := r.dumpPushOptions(ctx); err != nil {
 			return err
@@ -190,12 +190,12 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	}
 
 	if capabilities.IsDefined(pktline.ReportStatusV2) || capabilities.IsDefined(pktline.ReportStatus) {
-		if err := r.report(ctx, unpackErr == nil, commands); err != nil {
+		if err := r.report(ctx, unpackErr == nil, commands, capabilities); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return unpackErr
 }
 
 func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
@@ -520,8 +520,11 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	// FIXME? add --pack_header similar to git's push_header_arg
 
-	// These options are always on in prod.
-	args = append(args, "--show-resolving-progress", "--report-end-of-input", "--fix-thin")
+	if useSideBand(capabilities) {
+		args = append(args, "--show-resolving-progress", "--report-end-of-input")
+	}
+
+	args = append(args, "--fix-thin")
 
 	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
@@ -673,10 +676,7 @@ func (r *spokesReceivePack) getRefUpdateCommandLimit() (int, error) {
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
 // stderr of the command `cmd` into the indicated `output`
 func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabilities pktline.Capabilities) (*errgroup.Group, error) {
-	_, sbDefined := capabilities.Get(pktline.SideBand)
-	_, sb64kDefined := capabilities.Get(pktline.SideBand64k)
-
-	if !sbDefined && !sb64kDefined {
+	if !useSideBand(capabilities) {
 		// no sideband capability has been defined
 		return nil, nil
 	}
@@ -689,10 +689,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 				_ = stderr.Close()
 			}()
 			for {
-				var bufferSize = 999
-				if sb64kDefined {
-					bufferSize = 65519
-				}
+				bufferSize := sideBandBufSize(capabilities)
 				buf := make([]byte, bufferSize)
 
 				n, err := stderr.Read(buf[:])
@@ -828,38 +825,53 @@ func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 }
 
 // report the success/failure of the push operation to the client
-func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []command) error {
-	var buf bytes.Buffer
+func writeReport(w io.Writer, unpackOK bool, commands []command) error {
 	if unpackOK {
-		if err := writePacketLine(&buf, []byte("unpack ok\n")); err != nil {
+		if err := writePacketLine(w, []byte("unpack ok\n")); err != nil {
 			return err
 		}
 	} else {
-		if err := writePacketLine(&buf, []byte("unpack index-pack failed\n")); err != nil {
+		if err := writePacketLine(w, []byte("unpack index-pack failed\n")); err != nil {
 			return err
 		}
 	}
 	for _, c := range commands {
 		if c.err != "" {
-			if err := writePacketf(&buf, "ng %s %s\n", c.refname, c.err); err != nil {
+			if err := writePacketf(w, "ng %s %s\n", c.refname, c.err); err != nil {
 				return err
 			}
 		} else {
-			if err := writePacketf(&buf, "%s %s\n", c.reportFF, c.refname); err != nil {
+			if err := writePacketf(w, "%s %s\n", c.reportFF, c.refname); err != nil {
 				return err
 			}
 			// FIXME? if statusV2, maybe also write option refname, option old-oid, option new-oid, option forced-update
 		}
 	}
 
-	if _, err := fmt.Fprint(&buf, "0000"); err != nil {
+	if _, err := fmt.Fprint(w, "0000"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []command, capabilities pktline.Capabilities) error {
+	if !useSideBand(capabilities) {
+		return writeReport(r.output, unpackOK, commands)
+	}
+
+	var buf bytes.Buffer
+
+	if err := writeReport(&buf, unpackOK, commands); err != nil {
 		return err
 	}
 
 	output := buf.Bytes()
 
+	packetMax := sideBandBufSize(capabilities)
+
 	for len(output) > 0 {
-		n := 4096
+		n := packetMax - 5
 		if len(output) < n {
 			n = len(output)
 		}
@@ -868,9 +880,11 @@ func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 		}
 		output = output[n:]
 	}
+
 	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
 		return nil
 	}
+
 	return nil
 }
 
@@ -883,4 +897,15 @@ func includeNonDeletes(commands []command) bool {
 		}
 	}
 	return false
+}
+
+func useSideBand(c pktline.Capabilities) bool {
+	return c.IsDefined(pktline.SideBand) || c.IsDefined(pktline.SideBand64k)
+}
+
+func sideBandBufSize(capabilities pktline.Capabilities) int {
+	if capabilities.IsDefined(pktline.SideBand64k) {
+		return 65519
+	}
+	return 999
 }

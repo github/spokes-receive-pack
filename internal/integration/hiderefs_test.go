@@ -110,16 +110,13 @@ func TestHiderefsConfig(t *testing.T) {
 
 	// Send an empty pack, since we're using commits that are already in
 	// the repo.
-	packObjects := exec.CommandContext(ctx, "git", "-C", testRepo, "pack-objects", "--all-progress-implied", "--revs", "--stdout", "--thin", "--delta-base-offset", "--progress")
-	packObjects.Stderr = os.Stderr
-	pack, err := packObjects.StdoutPipe()
+	pack, err := os.Open("testdata/empty.pack")
 	require.NoError(t, err)
-	go packObjects.Run()
 	if _, err := io.Copy(srpIn, pack); err != nil {
 		t.Logf("error writing pack to spokes-receive-pack input: %v", err)
 	}
 
-	refStatus, unpackRes, _, err := readResult(bufSRPOut)
+	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
 		createBranch:         "ok",

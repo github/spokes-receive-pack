@@ -4,6 +4,7 @@ package integration
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPushOptions(t *testing.T) {
+func TestNoSideBand(t *testing.T) {
 	const (
 		defaultBranch = "refs/heads/main"
 		createBranch  = "refs/heads/newbranch"
@@ -60,7 +61,7 @@ func TestPushOptions(t *testing.T) {
 
 	oldnew := fmt.Sprintf("%040d %s", 0, testCommit)
 	require.NoError(t, writePktlinef(srpIn,
-		"%s %s\x00report-status report-status-v2 side-band-64k push-options object-format=sha1\n", oldnew, createBranch))
+		"%s %s\x00report-status report-status-v2 push-options object-format=sha1\n", oldnew, createBranch))
 	_, err = srpIn.Write([]byte("0000"))
 	require.NoError(t, err)
 
@@ -79,10 +80,41 @@ func TestPushOptions(t *testing.T) {
 
 	require.NoError(t, srpIn.Close())
 
-	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
+	lines, err := readResultNoSideBand(t, bufSRPOut)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{
-		createBranch: "ok",
-	}, refStatus)
-	assert.Equal(t, "unpack ok\n", unpackRes)
+	assert.Equal(t, []string{
+		"unpack ok\n",
+		"ok refs/heads/newbranch\n",
+	}, lines)
+}
+
+func readResultNoSideBand(t *testing.T, r io.Reader) ([]string, error) {
+	var lines []string
+
+	// Read all of the output so that we can include it with errors.
+	data, err := io.ReadAll(r)
+	if err != nil {
+		if len(data) > 0 {
+			t.Logf("got data, but there was an error: %v", err)
+		} else {
+			return nil, err
+		}
+	}
+
+	// Replace r.
+	r = bytes.NewReader(data)
+
+	for {
+		pkt, err := readPktline(r)
+		switch {
+		case err != nil:
+			return nil, fmt.Errorf("%w while parsing %q", err, string(data))
+
+		case pkt == nil:
+			return lines, nil
+
+		default:
+			lines = append(lines, string(pkt))
+		}
+	}
 }
