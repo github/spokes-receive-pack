@@ -673,10 +673,7 @@ func (r *spokesReceivePack) getRefUpdateCommandLimit() (int, error) {
 // startSidebandMultiplexer checks if a sideband capability has been required and, in that case, starts multiplexing the
 // stderr of the command `cmd` into the indicated `output`
 func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabilities pktline.Capabilities) (*errgroup.Group, error) {
-	_, sbDefined := capabilities.Get(pktline.SideBand)
-	_, sb64kDefined := capabilities.Get(pktline.SideBand64k)
-
-	if !sbDefined && !sb64kDefined {
+	if !useSideBand(capabilities) {
 		// no sideband capability has been defined
 		return nil, nil
 	}
@@ -689,10 +686,7 @@ func startSidebandMultiplexer(stderr io.ReadCloser, output io.Writer, capabiliti
 				_ = stderr.Close()
 			}()
 			for {
-				var bufferSize = 999
-				if sb64kDefined {
-					bufferSize = 65519
-				}
+				bufferSize := sideBandBufSize(capabilities)
 				buf := make([]byte, bufferSize)
 
 				n, err := stderr.Read(buf[:])
@@ -883,4 +877,15 @@ func includeNonDeletes(commands []command) bool {
 		}
 	}
 	return false
+}
+
+func useSideBand(c pktline.Capabilities) bool {
+	return c.IsDefined(pktline.SideBand) || c.IsDefined(pktline.SideBand64k)
+}
+
+func sideBandBufSize(capabilities pktline.Capabilities) int {
+	if capabilities.IsDefined(pktline.SideBand64k) {
+		return 65519
+	}
+	return 999
 }
