@@ -141,7 +141,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
-	if capabilities.HasPushOptions() {
+	if capabilities.IsDefined(pktline.PushOptions) {
 		// We don't use push-options here.
 		if err := r.dumpPushOptions(ctx); err != nil {
 			return err

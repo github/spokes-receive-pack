@@ -152,9 +152,8 @@ func (c Capabilities) Quiet() Capability {
 func (c Capabilities) Atomic() Capability {
 	return c.caps[Atomic]
 }
-func (c Capabilities) HasPushOptions() bool {
-	_, ok := c.caps[PushOptions]
-	return ok
+func (c Capabilities) PushOptions() Capability {
+	return c.caps[PushOptions]
 }
 func (c Capabilities) AllowTipSha1InWant() Capability {
 	return c.caps[AllowTipSha1InWant]
