@@ -195,7 +195,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return unpackErr
 }
 
 func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
