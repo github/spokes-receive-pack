@@ -198,7 +198,11 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		}
 	}
 
-	return unpackErr
+	if unpackErr != nil {
+		return fmt.Errorf("index-pack: %w", unpackErr)
+	}
+
+	return nil
 }
 
 func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
