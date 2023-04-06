@@ -520,8 +520,11 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	// FIXME? add --pack_header similar to git's push_header_arg
 
-	// These options are always on in prod.
-	args = append(args, "--show-resolving-progress", "--report-end-of-input", "--fix-thin")
+	if useSideBand(capabilities) {
+		args = append(args, "--show-resolving-progress", "--report-end-of-input")
+	}
+
+	args = append(args, "--fix-thin")
 
 	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
