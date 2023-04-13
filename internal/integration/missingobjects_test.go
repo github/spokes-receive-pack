@@ -1,0 +1,89 @@
+//go:build integration
+
+package integration
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestMissingObjects(t *testing.T) {
+	var info struct {
+		OldOID string `json:"push_from"`
+		NewOID string `json:"push_to"`
+		Ref    string `json:"ref"`
+	}
+	const (
+		remote   = "testdata/missing-objects/remote.git"
+		badPack  = "testdata/missing-objects/bad.pack"
+		infoFile = "testdata/missing-objects/info.json"
+	)
+
+	infoJSON, err := os.ReadFile(infoFile)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(infoJSON, &info))
+
+	origin, err := filepath.Abs(remote)
+	require.NoError(t, err)
+
+	testRepo := t.TempDir()
+	requireRun(t, "git", "init", "--bare", testRepo)
+	requireRun(t, "git", "-C", testRepo, "fetch", origin, info.Ref+":"+info.Ref)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	srp := exec.CommandContext(ctx, "spokes-receive-pack", ".")
+	srp.Dir = testRepo
+	srp.Env = append(os.Environ(),
+		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
+		"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
+	srp.Stderr = os.Stderr
+	srpIn, err := srp.StdinPipe()
+	require.NoError(t, err)
+	srpOut, err := srp.StdoutPipe()
+	require.NoError(t, err)
+
+	srpErr := make(chan error)
+	go func() { srpErr <- srp.Run() }()
+
+	bufSRPOut := bufio.NewReader(srpOut)
+
+	refs, _, err := readAdv(bufSRPOut)
+	require.NoError(t, err)
+	assert.Equal(t, refs, map[string]string{
+		info.Ref: info.OldOID,
+	})
+
+	require.NoError(t, writePktlinef(srpIn,
+		"%s %s %s\x00report-status report-status-v2 side-band-64k object-format=sha1\n",
+		info.OldOID, info.NewOID, info.Ref))
+	_, err = srpIn.Write([]byte("0000"))
+	require.NoError(t, err)
+
+	// Send the pack that's missing a commit.
+	pack, err := os.Open("testdata/missing-objects/bad.pack")
+	require.NoError(t, err)
+	if _, err := io.Copy(srpIn, pack); err != nil {
+		t.Logf("error writing pack to spokes-receive-pack input: %v", err)
+	}
+
+	require.NoError(t, srpIn.Close())
+
+	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		info.Ref: "ng missing necessary objects",
+	}, refStatus)
+	assert.Equal(t, "unpack ok\n", unpackRes)
+}
