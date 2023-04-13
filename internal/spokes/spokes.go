@@ -173,7 +173,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			if err != nil {
 				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
 				if singleObjectErr != nil {
-					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					c.err = "missing necessary objects"
 					c.reportFF = "ng"
 				}
 			}
