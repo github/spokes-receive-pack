@@ -808,10 +808,10 @@ func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"rev-list",
 		"--objects",
 		"--no-object-names",
+		oid,
 		"--not",
 		"--all",
 		"--alternate-refs",
-		oid,
 	)
 	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
