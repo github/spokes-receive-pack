@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -30,14 +29,12 @@ type Config struct {
 
 // GetConfig returns the entries from gitconfig in the repo located at repo.
 func GetConfig(repo string) (*Config, error) {
-	if err := os.Chdir(repo); err != nil {
-		return nil, err
-	}
 	cmd := exec.Command(
 		"git",
 		"config",
 		"--list",
 		"-z")
+	cmd.Dir = repo
 
 	out, err := cmd.Output()
 	if err != nil {
