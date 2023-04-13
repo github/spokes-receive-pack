@@ -794,7 +794,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 func filterNonRejectedCommands(commands []command) []command {
 	var nonRejectedCommands []command
 	for _, c := range commands {
-		if c.err != "" {
+		if c.err == "" {
 			nonRejectedCommands = append(nonRejectedCommands, c)
 		}
 	}
