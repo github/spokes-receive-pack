@@ -327,12 +327,26 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClo
 	cmd = exec.Command("git", "clone", "--depth=1", fmt.Sprintf("file://%s", remoteForShallow), shallowClone)
 	require.NoError(suite.T(), cmd.Run(), "git clone --depth=1 %s %s", remoteForShallow, shallowClone)
 
-	// Push from the shallow clone to a new branch.
-	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test")
-	cmd.Dir = shallowClone
-	out, err := cmd.CombinedOutput()
-	suite.T().Logf("ERROR:%s", out)
-	require.NoError(suite.T(), err)
+	mustRunGit := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = shallowClone
+		out, err := cmd.CombinedOutput()
+		suite.T().Logf("[in %s] git %v:\n%s", shallowClone, args, out)
+		require.NoError(suite.T(), err)
+	}
+
+	mustRunGit("config", "user.email", "spokes-receive-pack@github.com")
+	mustRunGit("config", "user.name", "spokes-receive-pack")
+
+	// Add a file to the shallow clone and push.
+	require.NoError(suite.T(),
+		os.WriteFile(filepath.Join(shallowClone, "file-from-shallow.txt"),
+			[]byte("this is a file created in a shallow clone.\n"),
+			0644))
+
+	mustRunGit("add", "file-from-shallow.txt")
+	mustRunGit("commit", "--message", "commit in shallow clone")
+	mustRunGit("push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test")
 }
 
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
