@@ -32,7 +32,7 @@ This commit object intentionally broken
 
 type SpokesReceivePackTestSuite struct {
 	suite.Suite
-	localRepo, remoteRepo, shallowClone string
+	localRepo, remoteRepo string
 }
 
 func (suite *SpokesReceivePackTestSuite) SetupTest() {
@@ -79,15 +79,9 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 
 	req.NoError(exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run())
 
-	// create a clone of our local repo with --depth=1
-	shallowClone, err := os.MkdirTemp("", "shallow-clone")
-	req.NoError(err, "unable to create the shallow-clone repository directory")
-	req.NoError(exec.Command("git", "clone", "--depth=1", fmt.Sprintf("file://%s", localRepo), shallowClone).Run())
-
 	// store the state
 	suite.localRepo = localRepo
 	suite.remoteRepo = remoteRepo
-	suite.shallowClone = shallowClone
 }
 
 func (suite *SpokesReceivePackTestSuite) TearDownTest() {
@@ -96,7 +90,6 @@ func (suite *SpokesReceivePackTestSuite) TearDownTest() {
 	// Clean the environment before exiting
 	require.NoError(os.RemoveAll(suite.remoteRepo))
 	require.NoError(os.RemoveAll(suite.localRepo))
-	require.NoError(os.RemoveAll(suite.shallowClone))
 }
 
 func (suite *SpokesReceivePackTestSuite) TestDefaultReceivePackSimplePush() {
@@ -315,14 +308,31 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClone() {
-	assert.NoError(suite.T(), chdir(suite.T(), suite.shallowClone), "unable to chdir into our local shallow clone")
+	var cmd *exec.Cmd
 
-	out, err := exec.Command(
-		"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test").CombinedOutput()
+	// Set up a bare repository that the shallow clone can clone from and push to.
+	remoteForShallow, err := os.MkdirTemp("", "shallow-remote")
+	require.NoError(suite.T(), err, "unable to create a dir for a shallow clone")
+	suite.T().Cleanup(func() { _ = os.RemoveAll(remoteForShallow) })
 
+	// localRepo has the objects we want the remote to start with, so clone from there into a bare repository.
+	cmd = exec.Command("git", "clone", "--bare", suite.localRepo, remoteForShallow)
+	require.NoError(suite.T(), cmd.Run(), "git clone --bare %s %s", suite.localRepo, remoteForShallow)
+
+	// Make a shallow clone from our new bare repo.
+	shallowClone, err := os.MkdirTemp("", "shallow")
+	require.NoError(suite.T(), err, "unable to create a dir for a shallow clone")
+	suite.T().Cleanup(func() { _ = os.RemoveAll(shallowClone) })
+
+	cmd = exec.Command("git", "clone", "--depth=1", fmt.Sprintf("file://%s", remoteForShallow), shallowClone)
+	require.NoError(suite.T(), cmd.Run(), "git clone --depth=1 %s %s", remoteForShallow, shallowClone)
+
+	// Push from the shallow clone to a new branch.
+	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test")
+	cmd.Dir = shallowClone
+	out, err := cmd.CombinedOutput()
 	suite.T().Logf("ERROR:%s", out)
 	require.NoError(suite.T(), err)
-
 }
 
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {

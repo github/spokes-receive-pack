@@ -47,6 +47,8 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
 	}
 
+	// Assume that this is a bare repository. chdir to it and take the full
+	// path to use when setting up the quarantine dir.
 	if err := os.Chdir(flag.Args()[0]); err != nil {
 		return 1, fmt.Errorf("error entering repo: %w", err)
 	}
