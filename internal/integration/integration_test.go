@@ -321,8 +321,8 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClo
 		"git", "push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test").CombinedOutput()
 
 	suite.T().Logf("ERROR:%s", out)
-	require.NoError(suite.T(), err)
-
+	require.Error(suite.T(), err)
+	require.Contains(suite.T(), string(out), "missing necessary objects")
 }
 
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
