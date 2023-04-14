@@ -584,12 +584,8 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	go func(r io.ReadCloser, res chan<- []byte) {
 		defer close(indexPackOut)
 		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			log.Printf("error reading index-pack output: %v", err)
-		} else {
-			indexPackOut <- out
-		}
+		out, _ := io.ReadAll(r)
+		indexPackOut <- out
 	}(stdout, indexPackOut)
 
 	eg, err := startSidebandMultiplexer(stderr, r.output, capabilities)
@@ -617,12 +613,12 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	case out, ok := <-indexPackOut:
 		if ok && (bytes.HasPrefix(out, []byte("pack\t")) || bytes.HasPrefix(out, []byte("keep\t"))) {
 			packID := string(bytes.TrimSpace(out[5:]))
-			packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
-			if info, err := os.Stat(packPath); err == nil {
-				r.governor.SetReceivePackSize(info.Size())
+			if isHex(packID) {
+				packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
+				if info, err := os.Stat(packPath); err == nil {
+					r.governor.SetReceivePackSize(info.Size())
+				}
 			}
-		} else {
-			log.Printf("index-pack exited without telling us its packfile (%s)", out)
 		}
 	case <-time.After(time.Second):
 		// For some reason, index-pack's output isn't available. Just move on...
@@ -912,4 +908,14 @@ func sideBandBufSize(capabilities pktline.Capabilities) int {
 		return 65519
 	}
 	return 999
+}
+
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return len(s) > 0
 }
