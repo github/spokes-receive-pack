@@ -1,0 +1,91 @@
+#!/bin/bash
+#/ Usage: set-up-missing-objects-push
+#/
+#!!! This script shouldn't need run unless we need to make changes
+#!!! to the generated Git data. You should check in the contents of
+#!!! internal/integration/testdata/missing-push after running this script.
+#/
+#/ Sets up a scenario where we can make a push that's missing objects.
+#/
+#/  Pack    -> C
+#/             |
+#/  Missing -> B
+#/             |
+#/  Remote  -> A
+#/
+#/ Outputs:
+#/   internal/integration/testdata/missing-objects/remote.git
+#/   - Valid repository with A as its main branch.
+#/   internal/integration/testdata/missing-objects/info.json
+#/   - oid of A, oid of C, name of ref to update.
+#/   internal/integration/testdata/missing-objects/bad.pack
+#/   - packfile that only contains commit C.
+
+set -e
+set -o nounset
+set -o pipefail
+
+BRANCH=example
+
+set -x
+
+cd "$(dirname "$0")"
+rm -rf missing-objects
+mkdir missing-objects
+cd missing-objects
+
+git init --bare --quiet -b $BRANCH remote.git
+rm -rf remote.git/hooks remote.git/info/exclude
+
+git init --bare --quiet -b $BRANCH work.git
+cd work.git
+
+#/fi/ commit refs/heads/__BRANCH__
+#/fi/ committer Hubot <hubot@github.com> 1681399000 +1200
+#/fi/ data <<EOC
+#/fi/ commit A
+#/fi/ EOC
+#/fi/
+#/fi/ commit refs/heads/__BRANCH__
+#/fi/ committer Hubot <hubot@github.com> 1681399010 +1200
+#/fi/ data <<EOC
+#/fi/ commit B
+#/fi/ EOC
+#/fi/
+#/fi/ commit refs/heads/__BRANCH__
+#/fi/ committer Hubot <hubot@github.com> 1681399020 +1200
+#/fi/ data <<EOC
+#/fi/ commit C
+#/fi/ EOC
+#/fi/
+grep "^#/fi/ " ../../$(basename "$0") | cut -c7- | sed -e "s/__BRANCH__/$BRANCH/" \
+| git fast-import --quiet
+
+git --no-pager log --graph --all
+COMMIT_C=$(git rev-parse example)
+COMMIT_B=$(git rev-parse example~)
+COMMIT_A=$(git rev-parse example~~)
+
+git push ../remote.git $COMMIT_A:refs/heads/$BRANCH
+
+# Tell the test to update the ref from A -> C.
+printf '{"push_from":"%s","push_to":"%s","ref":"refs/heads/%s"}' "$COMMIT_A" "$COMMIT_C" "$BRANCH" \
+| jq . | tee ../info.json
+
+# Only include commit C in the pack.
+# pack-objects should output "Total 1" (objects packed).
+# You can verify this by running 'git index-pack bad.pack' and
+# 'git verify-pack -v bad.idx'.
+printf "^%s\n%s\n" "$COMMIT_B" "$COMMIT_C" \
+| git pack-objects --revs --stdout >../bad.pack
+
+cd ..
+rm -rf work.git
+
+cd remote.git
+git repack -adf
+# This should only show commit A.
+git --no-pager log example --graph --all
+
+cd ..
+find . -type f -ls

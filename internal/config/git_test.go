@@ -22,15 +22,16 @@ func TestGetConfigMultipleValues(t *testing.T) {
 	defer os.RemoveAll(localRepo)
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
-	assert.NoError(t, os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	cmd := commandBuilderInDir(localRepo)
 
 	// init and config the local Git repo
-	assert.NoError(t, exec.Command("git", "init").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
-	assert.NoError(t, exec.Command("git", "config", "receive.hiderefs", "refs/pull/").Run())
-	assert.NoError(t, exec.Command("git", "config", "--add", "receive.hiderefs", "refs/gh/").Run())
-	assert.NoError(t, exec.Command("git", "config", "--add", "receive.hiderefs", "refs/__gh__").Run())
+	assert.NoError(t, cmd("git", "init").Run())
+	assert.NoError(t, cmd("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, cmd("git", "config", "receive.hiderefs", "refs/pull/").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.hiderefs", "refs/gh/").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.hiderefs", "refs/__gh__").Run())
 
 	config, err := GetConfig(localRepo)
 	assert.NoError(t, err, "unable to properly extract the receive section from the GitConfig")
@@ -47,14 +48,15 @@ func TestGetConfigEntryValues(t *testing.T) {
 	defer os.RemoveAll(localRepo)
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
-	assert.NoError(t, os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	cmd := commandBuilderInDir(localRepo)
 
 	// init and config the local Git repo
-	assert.NoError(t, exec.Command("git", "init").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
-	assert.NoError(t, exec.Command("git", "config", "receive.fsckObjects", "true").Run())
-	assert.NoError(t, exec.Command("git", "config", "receive.maxsize", "11").Run())
+	assert.NoError(t, cmd("git", "init").Run())
+	assert.NoError(t, cmd("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, cmd("git", "config", "receive.fsckObjects", "true").Run())
+	assert.NoError(t, cmd("git", "config", "receive.maxsize", "11").Run())
 
 	fsckObjects := testGetConfigEntryValue(localRepo, "receive.fsckObjects")
 	assert.Equal(t, "true", fsckObjects)
@@ -67,16 +69,25 @@ func TestGetConfigEntryMultipleValues(t *testing.T) {
 	defer os.RemoveAll(localRepo)
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
-	assert.NoError(t, os.Chdir(localRepo), "unable to chdir new local Git repo")
+
+	cmd := commandBuilderInDir(localRepo)
 
 	// init and config the local Git repo
-	assert.NoError(t, exec.Command("git", "init").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
-	assert.NoError(t, exec.Command("git", "config", "user.name", "spokes-receive-pack").Run())
-	assert.NoError(t, exec.Command("git", "config", "receive.multivalue", "a").Run())
-	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "b").Run())
-	assert.NoError(t, exec.Command("git", "config", "--add", "receive.multivalue", "c").Run())
+	assert.NoError(t, cmd("git", "init").Run())
+	assert.NoError(t, cmd("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, cmd("git", "config", "receive.multivalue", "a").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.multivalue", "b").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.multivalue", "c").Run())
 
 	fsckObjects := testGetConfigEntryValue(localRepo, "receive.multivalue")
 	assert.Equal(t, "c", fsckObjects)
+}
+
+func commandBuilderInDir(dir string) func(string, ...string) *exec.Cmd {
+	return func(program string, args ...string) *exec.Cmd {
+		c := exec.Command(program, args...)
+		c.Dir = dir
+		return c
+	}
 }

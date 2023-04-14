@@ -46,7 +46,14 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	if flag.NArg() != 1 {
 		return 1, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
 	}
-	repoPath, err := filepath.Abs(flag.Args()[0])
+
+	// Assume that this is a bare repository. chdir to it and take the full
+	// path to use when setting up the quarantine dir.
+	if err := os.Chdir(flag.Args()[0]); err != nil {
+		return 1, fmt.Errorf("error entering repo: %w", err)
+	}
+
+	repoPath, err := os.Getwd()
 	if err != nil {
 		return 1, err
 	}
@@ -57,7 +64,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	}
 	defer g.Finish(ctx)
 
-	config, err := config.GetConfig(repoPath)
+	config, err := config.GetConfig(".")
 	if err != nil {
 		g.SetError(1, err.Error())
 		return 1, err
@@ -109,10 +116,6 @@ type spokesReceivePack struct {
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
 func (r *spokesReceivePack) execute(ctx context.Context) error {
-	if err := os.Chdir(r.repoPath); err != nil {
-		return fmt.Errorf("unable to enter repo at location: %s", r.repoPath)
-	}
-
 	// Reference discovery phase
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
@@ -173,7 +176,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			if err != nil {
 				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
 				if singleObjectErr != nil {
-					c.err = fmt.Sprintf("missing required objects: %s", err.Error())
+					c.err = "missing necessary objects"
 					c.reportFF = "ng"
 				}
 			}
@@ -794,7 +797,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 func filterNonRejectedCommands(commands []command) []command {
 	var nonRejectedCommands []command
 	for _, c := range commands {
-		if c.err != "" {
+		if c.err == "" {
 			nonRejectedCommands = append(nonRejectedCommands, c)
 		}
 	}
@@ -808,10 +811,10 @@ func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"rev-list",
 		"--objects",
 		"--no-object-names",
+		oid,
 		"--not",
 		"--all",
 		"--alternate-refs",
-		oid,
 	)
 	cmd.Env = append([]string{}, os.Environ()...)
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)

@@ -253,8 +253,11 @@ const expectedReferenceList = `00466a9ee41101de417acd4db5b7a18b66a5e1b54496 refs
 0000`
 
 func TestPerformReferenceDiscovery(t *testing.T) {
+	// spokesReceivePack assumes that we've already done a chdir into the repo.
+	origwd, err := os.Getwd()
+	require.NoError(t, err)
 	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
-	t.Cleanup(func() { _ = os.Chdir("../..") })
+	t.Cleanup(func() { _ = os.Chdir(origwd) })
 
 	var buf bytes.Buffer
 	wd, _ := os.Getwd()
