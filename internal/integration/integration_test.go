@@ -119,6 +119,28 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackDelete() {
+	require.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	// Push everything so that there's something to delete.
+	// Use git-receive-pack because it updates refs and puts objects where they can be found.
+	cmd := exec.Command("git", "push", "--all", "r")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	require.NoError(suite.T(), err, "unexpected error pushing some branches")
+
+	// Delete one of the branches with spokes-receive-pack.
+	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", ":branch-1")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not delete branch-1")
+
+	// Delete another branch while creating a different one.
+	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", ":branch-2", "branch-3:new-branch")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not delete branch-2 while creating branch-3")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	govSock, msgs, cleanup := startFakeGovernor(suite.T())
 	defer cleanup()
