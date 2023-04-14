@@ -173,7 +173,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			}
 			var singleObjectErr error
 			c.reportFF = "ok"
-			if err != nil {
+			if err != nil && !c.isDelete() {
 				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
 				if singleObjectErr != nil {
 					c.err = "missing necessary objects"
@@ -415,6 +415,10 @@ type command struct {
 
 func (c *command) isUpdate() bool {
 	return (c.oldOID != nullSHA1OID && c.oldOID != nullSHA256OID) && (c.newOID != nullSHA1OID && c.newOID != nullSHA256OID)
+}
+
+func (c *command) isDelete() bool {
+	return c.newOID == nullSHA1OID || c.newOID == nullSHA256OID
 }
 
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
@@ -731,7 +735,7 @@ func (r *spokesReceivePack) makeQuarantineDirs() error {
 // closed under reachability, stopping the traversal at any objects
 // reachable from the pre-existing reference values.
 func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
-	nonRejectedCommands := filterNonRejectedCommands(commands)
+	nonRejectedCommands := commandsForConnectivityCheck(commands)
 	if len(nonRejectedCommands) == 0 {
 		// all the commands have been previously rejected so there is no need to perform
 		// a connectivity check
@@ -769,9 +773,6 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 				w := bufio.NewWriter(output)
 
 				for _, c := range commands {
-					if c.newOID == nullSHA1OID || c.newOID == nullSHA256OID {
-						continue
-					}
 					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
 						return fmt.Errorf("writing to 'rev-list' input: %w", err)
 					}
@@ -794,14 +795,14 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	return nil
 }
 
-func filterNonRejectedCommands(commands []command) []command {
-	var nonRejectedCommands []command
+func commandsForConnectivityCheck(commands []command) []command {
+	var res []command
 	for _, c := range commands {
-		if c.err == "" {
-			nonRejectedCommands = append(nonRejectedCommands, c)
+		if c.err == "" && !c.isDelete() {
+			res = append(res, c)
 		}
 	}
-	return nonRejectedCommands
+	return res
 }
 
 func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
