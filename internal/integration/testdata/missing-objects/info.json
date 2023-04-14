@@ -1,5 +1,6 @@
 {
   "push_from": "6389baef05c2b5e5c9f603daa23df53e71bdf591",
   "push_to": "04ae1b030995df0ae3e91c41d1a065aaae405397",
-  "ref": "refs/heads/example"
+  "ref": "refs/heads/example",
+  "extra_ref": "refs/heads/other"
 }
