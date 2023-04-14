@@ -173,7 +173,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			}
 			var singleObjectErr error
 			c.reportFF = "ok"
-			if err != nil {
+			if err != nil && !c.isDelete() {
 				singleObjectErr = r.performCheckConnectivityOnObject(ctx, c.newOID)
 				if singleObjectErr != nil {
 					c.err = "missing necessary objects"
@@ -417,6 +417,10 @@ func (c *command) isUpdate() bool {
 	return (c.oldOID != nullSHA1OID && c.oldOID != nullSHA256OID) && (c.newOID != nullSHA1OID && c.newOID != nullSHA256OID)
 }
 
+func (c *command) isDelete() bool {
+	return c.newOID == nullSHA1OID || c.newOID == nullSHA256OID
+}
+
 var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}) (.+)`)
 
 // readCommands reads the set of ref update commands sent by the client side.
@@ -580,12 +584,8 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	go func(r io.ReadCloser, res chan<- []byte) {
 		defer close(indexPackOut)
 		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			log.Printf("error reading index-pack output: %v", err)
-		} else {
-			indexPackOut <- out
-		}
+		out, _ := io.ReadAll(r)
+		indexPackOut <- out
 	}(stdout, indexPackOut)
 
 	eg, err := startSidebandMultiplexer(stderr, r.output, capabilities)
@@ -613,12 +613,12 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	case out, ok := <-indexPackOut:
 		if ok && (bytes.HasPrefix(out, []byte("pack\t")) || bytes.HasPrefix(out, []byte("keep\t"))) {
 			packID := string(bytes.TrimSpace(out[5:]))
-			packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
-			if info, err := os.Stat(packPath); err == nil {
-				r.governor.SetReceivePackSize(info.Size())
+			if isHex(packID) {
+				packPath := filepath.Join(r.quarantineFolder, "pack", "pack-"+packID+".pack")
+				if info, err := os.Stat(packPath); err == nil {
+					r.governor.SetReceivePackSize(info.Size())
+				}
 			}
-		} else {
-			log.Printf("index-pack exited without telling us its packfile (%s)", out)
 		}
 	case <-time.After(time.Second):
 		// For some reason, index-pack's output isn't available. Just move on...
@@ -731,7 +731,7 @@ func (r *spokesReceivePack) makeQuarantineDirs() error {
 // closed under reachability, stopping the traversal at any objects
 // reachable from the pre-existing reference values.
 func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, commands []command) error {
-	nonRejectedCommands := filterNonRejectedCommands(commands)
+	nonRejectedCommands := commandsForConnectivityCheck(commands)
 	if len(nonRejectedCommands) == 0 {
 		// all the commands have been previously rejected so there is no need to perform
 		// a connectivity check
@@ -769,9 +769,6 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 				w := bufio.NewWriter(output)
 
 				for _, c := range commands {
-					if c.newOID == nullSHA1OID || c.newOID == nullSHA256OID {
-						continue
-					}
 					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
 						return fmt.Errorf("writing to 'rev-list' input: %w", err)
 					}
@@ -794,14 +791,14 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	return nil
 }
 
-func filterNonRejectedCommands(commands []command) []command {
-	var nonRejectedCommands []command
+func commandsForConnectivityCheck(commands []command) []command {
+	var res []command
 	for _, c := range commands {
-		if c.err == "" {
-			nonRejectedCommands = append(nonRejectedCommands, c)
+		if c.err == "" && !c.isDelete() {
+			res = append(res, c)
 		}
 	}
-	return nonRejectedCommands
+	return res
 }
 
 func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context, oid string) error {
@@ -911,4 +908,14 @@ func sideBandBufSize(capabilities pktline.Capabilities) int {
 		return 65519
 	}
 	return 999
+}
+
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return len(s) > 0
 }

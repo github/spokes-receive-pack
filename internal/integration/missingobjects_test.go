@@ -22,12 +22,13 @@ func TestMissingObjects(t *testing.T) {
 		OldOID string `json:"push_from"`
 		NewOID string `json:"push_to"`
 		Ref    string `json:"ref"`
+		DelRef string `json:"extra_ref"`
 	}
 	const (
-		remote   = "testdata/missing-objects/remote.git"
-		badPack  = "testdata/missing-objects/bad.pack"
-		infoFile = "testdata/missing-objects/info.json"
-		otherRef = "refs/heads/other"
+		remote      = "testdata/missing-objects/remote.git"
+		badPack     = "testdata/missing-objects/bad.pack"
+		infoFile    = "testdata/missing-objects/info.json"
+		refToCreate = "refs/heads/new-branch"
 	)
 
 	infoJSON, err := os.ReadFile(infoFile)
@@ -38,8 +39,7 @@ func TestMissingObjects(t *testing.T) {
 	require.NoError(t, err)
 
 	testRepo := t.TempDir()
-	requireRun(t, "git", "init", "--bare", testRepo)
-	requireRun(t, "git", "-C", testRepo, "fetch", origin, info.Ref+":"+info.Ref)
+	requireRun(t, "git", "clone", "--mirror", origin, testRepo)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -49,7 +49,7 @@ func TestMissingObjects(t *testing.T) {
 	srp.Env = append(os.Environ(),
 		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 		"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
-	srp.Stderr = os.Stderr
+	srp.Stderr = &testLogWriter{t}
 	srpIn, err := srp.StdinPipe()
 	require.NoError(t, err)
 	srpOut, err := srp.StdoutPipe()
@@ -63,7 +63,8 @@ func TestMissingObjects(t *testing.T) {
 	refs, _, err := readAdv(bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, refs, map[string]string{
-		info.Ref: info.OldOID,
+		info.Ref:    info.OldOID,
+		info.DelRef: info.OldOID,
 	})
 
 	// Try to update the ref that's already there to commit C (but we won't
@@ -71,10 +72,17 @@ func TestMissingObjects(t *testing.T) {
 	require.NoError(t, writePktlinef(srpIn,
 		"%s %s %s\x00report-status report-status-v2 side-band-64k object-format=sha1\n",
 		info.OldOID, info.NewOID, info.Ref))
+
 	// Try to create another ref with a commit that the remote already has.
 	require.NoError(t, writePktlinef(srpIn,
 		"%040d %s %s",
-		0, info.OldOID, otherRef))
+		0, info.OldOID, refToCreate))
+
+	// Try to delete another ref.
+	require.NoError(t, writePktlinef(srpIn,
+		"%s %040d %s",
+		info.OldOID, 0, info.DelRef))
+
 	_, err = srpIn.Write([]byte("0000"))
 	require.NoError(t, err)
 
@@ -90,8 +98,9 @@ func TestMissingObjects(t *testing.T) {
 	refStatus, unpackRes, _, err := readResult(t, bufSRPOut)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
-		info.Ref: "ng missing necessary objects",
-		otherRef: "ok",
+		info.Ref:    "ng missing necessary objects",
+		info.DelRef: "ok",
+		refToCreate: "ok",
 	}, refStatus)
 	assert.Equal(t, "unpack ok\n", unpackRes)
 }

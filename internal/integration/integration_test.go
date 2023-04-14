@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -119,17 +118,39 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePush() {
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackDelete() {
+	require.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	// Push everything so that there's something to delete.
+	// Use git-receive-pack because it updates refs and puts objects where they can be found.
+	cmd := exec.Command("git", "push", "--all", "r")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	require.NoError(suite.T(), err, "unexpected error pushing some branches")
+
+	// Delete one of the branches with spokes-receive-pack.
+	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", ":branch-1")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not delete branch-1")
+
+	// Delete another branch while creating a different one.
+	cmd = exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", ":branch-2", "branch-3:new-branch")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not delete branch-2 while creating branch-3")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	govSock, msgs, cleanup := startFakeGovernor(suite.T())
 	defer cleanup()
 
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
 	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
 	cmd.Env = append(os.Environ(), "GIT_SOCKSTAT_PATH="+govSock)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-
-	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
-	assert.NoError(suite.T(), cmd.Run(),
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("git push output:\n%s", out)
+	assert.NoError(suite.T(), err,
 		"unexpected error running the push with the custom spokes-receive-pack program")
 
 	timeout := time.After(time.Second)
@@ -354,16 +375,16 @@ func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations fun
 	var pushErr error
 
 	h := func(event *pipe.Event) {
-		log.Printf("PIPELINE EVENT:")
-		log.Printf("-- COMMAND = %q", event.Command)
-		log.Printf("-- MSG = %q", event.Msg)
-		log.Printf("-- CONTEXT = %v", event.Context)
+		suite.T().Logf("PIPELINE EVENT:")
+		suite.T().Logf("-- COMMAND = %q", event.Command)
+		suite.T().Logf("-- MSG = %q", event.Msg)
+		suite.T().Logf("-- CONTEXT = %v", event.Context)
 		for err := event.Err; err != nil; err = errors.Unwrap(err) {
-			log.Printf("-- ERROR: (%T) %v", err, err)
+			suite.T().Logf("-- ERROR: (%T) %v", err, err)
 			switch e := err.(type) {
 			case *exec.ExitError:
-				log.Printf("--- exit code: %v", e.ExitCode())
-				log.Printf("--- stderr: %s", e.Stderr)
+				suite.T().Logf("--- exit code: %v", e.ExitCode())
+				suite.T().Logf("--- stderr: %s", e.Stderr)
 			}
 		}
 	}

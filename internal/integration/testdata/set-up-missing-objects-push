@@ -15,7 +15,7 @@
 #/
 #/ Outputs:
 #/   internal/integration/testdata/missing-objects/remote.git
-#/   - Valid repository with A as its main branch.
+#/   - Valid repository with A as its default ("example") and "other" branches.
 #/   internal/integration/testdata/missing-objects/info.json
 #/   - oid of A, oid of C, name of ref to update.
 #/   internal/integration/testdata/missing-objects/bad.pack
@@ -25,7 +25,8 @@ set -e
 set -o nounset
 set -o pipefail
 
-BRANCH=example
+DEFAULT_BRANCH=example
+EXTRA_BRANCH=other
 
 set -x
 
@@ -34,10 +35,10 @@ rm -rf missing-objects
 mkdir missing-objects
 cd missing-objects
 
-git init --bare --quiet -b $BRANCH remote.git
+git init --bare --quiet -b $DEFAULT_BRANCH remote.git
 rm -rf remote.git/hooks remote.git/info/exclude
 
-git init --bare --quiet -b $BRANCH work.git
+git init --bare --quiet -b $DEFAULT_BRANCH work.git
 cd work.git
 
 #/fi/ commit refs/heads/__BRANCH__
@@ -58,7 +59,7 @@ cd work.git
 #/fi/ commit C
 #/fi/ EOC
 #/fi/
-grep "^#/fi/ " ../../$(basename "$0") | cut -c7- | sed -e "s/__BRANCH__/$BRANCH/" \
+grep "^#/fi/ " ../../$(basename "$0") | cut -c7- | sed -e "s/__BRANCH__/$DEFAULT_BRANCH/" \
 | git fast-import --quiet
 
 git --no-pager log --graph --all
@@ -66,10 +67,10 @@ COMMIT_C=$(git rev-parse example)
 COMMIT_B=$(git rev-parse example~)
 COMMIT_A=$(git rev-parse example~~)
 
-git push ../remote.git $COMMIT_A:refs/heads/$BRANCH
+git push ../remote.git $COMMIT_A:refs/heads/$DEFAULT_BRANCH $COMMIT_A:refs/heads/$EXTRA_BRANCH
 
 # Tell the test to update the ref from A -> C.
-printf '{"push_from":"%s","push_to":"%s","ref":"refs/heads/%s"}' "$COMMIT_A" "$COMMIT_C" "$BRANCH" \
+printf '{"push_from":"%s","push_to":"%s","ref":"refs/heads/%s","extra_ref":"refs/heads/%s"}' "$COMMIT_A" "$COMMIT_C" "$DEFAULT_BRANCH" "$EXTRA_BRANCH" \
 | jq . | tee ../info.json
 
 # Only include commit C in the pack.
@@ -84,8 +85,13 @@ rm -rf work.git
 
 cd remote.git
 git repack -adf
+git pack-refs --all
+# Make sure Git doesn't delete the refs dir.
+touch refs/.keep
 # This should only show commit A.
 git --no-pager log example --graph --all
 
 cd ..
 find . -type f -ls
+
+echo DONE
