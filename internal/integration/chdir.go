@@ -15,6 +15,7 @@ func chdir(t *testing.T, dir string) error {
 		return err
 	}
 
+	t.Logf("chdir %q", dir)
 	if err := os.Chdir(dir); err != nil {
 		return err
 	}
@@ -24,6 +25,7 @@ func chdir(t *testing.T, dir string) error {
 		// tmpdir that got removed. In that case, we'll just log it,
 		// and trust that there's another cleanup func ready to change
 		// back to the original working dir.
+		t.Logf("cleanup chdir %q", wd)
 		if err := os.Chdir(wd); err != nil {
 			t.Logf("error calling chdir(%q) during cleanup: %v", wd, err)
 		}

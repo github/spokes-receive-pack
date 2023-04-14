@@ -42,7 +42,7 @@ func TestNoSideBand(t *testing.T) {
 	srp.Env = append(os.Environ(),
 		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 		"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
-	srp.Stderr = os.Stderr
+	srp.Stderr = &testLogWriter{t}
 	srpIn, err := srp.StdinPipe()
 	require.NoError(t, err)
 	srpOut, err := srp.StdoutPipe()

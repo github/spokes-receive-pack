@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -145,7 +144,6 @@ func readPktline(r io.Reader) ([]byte, error) {
 	if n != 4 {
 		return nil, fmt.Errorf("expected 4 bytes but got %d (%s)", n, sizeBuf[:n])
 	}
-	log.Printf("read pkt size: %s", sizeBuf)
 
 	size, err := strconv.ParseUint(string(sizeBuf), 16, 16)
 	if err != nil {
@@ -161,7 +159,6 @@ func readPktline(r io.Reader) ([]byte, error) {
 
 	buf := make([]byte, size-4)
 	n, err = io.ReadFull(r, buf)
-	log.Printf("read pkt data: %q", string(buf[:n]))
 	return buf, err
 }
 
