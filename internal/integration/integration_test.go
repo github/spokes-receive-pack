@@ -77,6 +77,7 @@ func (suite *SpokesReceivePackTestSuite) SetupTest() {
 	req.NoError(chdir(suite.T(), remoteRepo), "unable to chdir to project base directory")
 
 	req.NoError(exec.Command("git", "init", "--quiet", "--template=.", "--bare").Run())
+	req.NoError(exec.Command("git", "config", "transfer.hideRefs", "refs/__hidden__").Run())
 
 	// store the state
 	suite.localRepo = localRepo
@@ -169,6 +170,24 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackForcePush() {
 	out, err = cmd.CombinedOutput()
 	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
 	assert.NoError(suite.T(), err, "expect no error when force pushing")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackHiddenRefs() {
+	require.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
+	cmd := exec.Command("git", "push", "r", "HEAD:refs/__hidden__/anything")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.Error(suite.T(), err, "should not be able to push to a hidden ref")
+
+	cmd = exec.Command("git", "push", "r", "HEAD:refs/__hidden__/anything", "HEAD:refs/heads/new-branch")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.Error(suite.T(), err, "should not be able to push to a hidden ref")
+	assert.Contains(suite.T(), string(out), "* [new branch]      HEAD -> new-branch\n",
+		"should partially succeed")
+	assert.Contains(suite.T(), string(out), "! [remote rejected] HEAD -> refs/__hidden__/anything (deny updating a hidden ref)\n",
+		"should partially fail")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
