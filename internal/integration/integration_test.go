@@ -140,6 +140,37 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackDelete() {
 	assert.NoError(suite.T(), err, "could not delete branch-2 while creating branch-3")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackForcePush() {
+	require.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	// Push everything so that there's something in the remote.
+	// Use git-receive-pack because it updates refs and puts objects where they can be found.
+	cmd := exec.Command("git", "push", "--all", "r")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	require.NoError(suite.T(), err, "unexpected error pushing some branches")
+
+	// Rewrite the latest commit on branch-2 and push it.
+	cmd = exec.Command("git", "checkout", "branch-2")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not checkout branch-2")
+
+	cmd = exec.Command("git", "commit", "--amend", "--message", "updated commit message here")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "could not rewrite HEAD")
+
+	cmd = exec.Command("git", "push", "r", "branch-2")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.Error(suite.T(), err, "expect an error pushing without force")
+
+	cmd = exec.Command("git", "push", "r", "+branch-2")
+	out, err = cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "expect no error when force pushing")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	govSock, msgs, cleanup := startFakeGovernor(suite.T())
 	defer cleanup()
