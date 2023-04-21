@@ -758,6 +758,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--no-object-names",
 		"--stdin",
 		"--not",
+		"--exclude-hidden=receive",
 		"--all",
 		"--alternate-refs",
 	)
