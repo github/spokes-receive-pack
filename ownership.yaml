@@ -8,9 +8,8 @@ ownership:
   kind: code
   repo: https://github.com/github/spokes-receive-pack
   qos: experimental
-  team: github/git-access
+  team: github/git-systems
   team_slack: git-systems
-  maintainer: spraints
   exec_sponsor: prplr
   product_manager: vtbassmatt
   dependencies:
