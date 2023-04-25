@@ -131,6 +131,11 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
+	// Create quarantine dir so that anything that tries to use the quarantine dir as GIT_OBJECT_DIRECTORY will succeed.
+	if err := r.makeQuarantineDirs(); err != nil {
+		return err
+	}
+
 	// At this point the client knows what references the server is at, so it can send a
 	//list of reference update requests.  For each reference on the server
 	//that it wants to update, it sends a line listing the obj-id currently on
@@ -518,10 +523,6 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	// We only get a pack if there are non-deletes.
 	if !includeNonDeletes(commands) {
 		return nil
-	}
-
-	if err := r.makeQuarantineDirs(); err != nil {
-		return err
 	}
 
 	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/builtin/receive-pack.c#L2252-L2273
