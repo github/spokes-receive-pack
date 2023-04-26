@@ -131,6 +131,11 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
+	// Create quarantine dir so that anything that tries to use the quarantine dir as GIT_OBJECT_DIRECTORY will succeed.
+	if err := r.makeQuarantineDirs(); err != nil {
+		return err
+	}
+
 	// At this point the client knows what references the server is at, so it can send a
 	//list of reference update requests.  For each reference on the server
 	//that it wants to update, it sends a line listing the obj-id currently on
@@ -198,7 +203,11 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		}
 	}
 
-	return unpackErr
+	if unpackErr != nil {
+		return fmt.Errorf("index-pack: %w", unpackErr)
+	}
+
+	return nil
 }
 
 func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
@@ -516,10 +525,6 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		return nil
 	}
 
-	if err := r.makeQuarantineDirs(); err != nil {
-		return err
-	}
-
 	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/builtin/receive-pack.c#L2252-L2273
 	// and https://github.com/github/git/blob/d4a224977e032f93b1b8fd3201201f098d4f6757/builtin/receive-pack.c#L2362-L2386
 
@@ -754,6 +759,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--no-object-names",
 		"--stdin",
 		"--not",
+		"--exclude-hidden=receive",
 		"--all",
 		"--alternate-refs",
 	)
