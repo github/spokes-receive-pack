@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/github/go-pipe v1.0.2
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/sync v0.1.0
+	golang.org/x/sync v0.2.0
 )
 
 require (
