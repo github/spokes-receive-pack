@@ -420,6 +420,45 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClo
 	mustRunGit("push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackReferenceDiscoveryFailure() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	cmd.Env = append(os.Environ(), "GO_FAILPOINTS=github.com/github/spokes-receive-pack/internal/spokes/reference-discovery-error=return(true)")
+
+	out, err := cmd.CombinedOutput()
+	assert.Error(
+		suite.T(),
+		err,
+		"unexpected success running the push with a reference discovery failure; it should have failed")
+	assert.Contains(suite.T(), string(out), "reference discovery failed")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackQuarantineDirErrors() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	cmd.Env = append(os.Environ(), "GO_FAILPOINTS=github.com/github/spokes-receive-pack/internal/spokes/make-quarantine-dirs-error=return(true)")
+
+	out, err := cmd.CombinedOutput()
+	assert.Error(
+		suite.T(),
+		err,
+		"unexpected success running the push with an error in the quarantine folder creation; it should have failed")
+	assert.Contains(suite.T(), string(out), "error creating quarantine dirs")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackReadCommandsError() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	cmd.Env = append(os.Environ(), "GO_FAILPOINTS=github.com/github/spokes-receive-pack/internal/spokes/read-commands-error=return(true)")
+
+	out, err := cmd.CombinedOutput()
+	assert.Error(
+		suite.T(),
+		err,
+		"unexpected success running the push with an error processing the commands; it should have failed")
+	assert.Contains(suite.T(), string(out), "error processing commands")
+}
+
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
 	var pushOut []byte
 	var pushErr error
