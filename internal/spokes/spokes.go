@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/github/spokes-receive-pack/internal/governor"
 	"github.com/github/spokes-receive-pack/internal/pktline"
+	"github.com/pingcap/failpoint"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -233,6 +235,12 @@ func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
 func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
+	failpoint.Inject("reference-discovery-error", func(val failpoint.Value) {
+		if val.(bool) {
+			failpoint.Return(errors.New("reference discovery failed"))
+		}
+	})
+
 	hiddenRefs := r.getHiddenRefs()
 
 	var wroteCapabilities bool
@@ -434,6 +442,12 @@ var validReferenceName = regexp.MustCompile(`^([0-9a-f]{40,64}) ([0-9a-f]{40,64}
 
 // readCommands reads the set of ref update commands sent by the client side.
 func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string, pktline.Capabilities, error) {
+	failpoint.Inject("read-commands-error", func(val failpoint.Value) {
+		if val.(bool) {
+			failpoint.Return(nil, nil, pktline.Capabilities{}, errors.New("error processing commands"))
+		}
+	})
+
 	var commands []command
 	var shallowInfo []string
 
@@ -729,6 +743,11 @@ func (r *spokesReceivePack) getAlternateObjectDirsEnv() []string {
 }
 
 func (r *spokesReceivePack) makeQuarantineDirs() error {
+	failpoint.Inject("make-quarantine-dirs-error", func(val failpoint.Value) {
+		if val.(bool) {
+			failpoint.Return(errors.New("error creating quarantine dirs"))
+		}
+	})
 	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0700)
 }
 
