@@ -644,6 +644,8 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		log.Print("index-pack output was too slow")
 	}
 
+	failpoint.Inject("slow-down-read-pack", func() {})
+
 	return nil
 }
 
