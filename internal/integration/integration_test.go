@@ -459,6 +459,17 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackReadCommandsError(
 	assert.Contains(suite.T(), string(out), "error processing commands")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSlowDownReadPack() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	cmd.Env = append(os.Environ(), "GO_FAILPOINTS=github.com/github/spokes-receive-pack/internal/spokes/slow-down-read-pack=sleep(15000)")
+
+	assert.NoError(
+		suite.T(),
+		cmd.Run(),
+		"unexpected error running the push with a slow read-pack; it should have succeeded")
+}
+
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
 	var pushOut []byte
 	var pushErr error
