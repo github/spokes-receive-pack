@@ -420,6 +420,18 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClo
 	mustRunGit("push", "--receive-pack=spokes-receive-pack-wrapper", "origin", "HEAD:test")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackQuietMode() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "-q", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	out, err := cmd.CombinedOutput()
+
+	assert.NoError(
+		suite.T(),
+		err,
+		"unexpected error running the push to validate the quiet mode; it should have succeeded")
+	assert.Equal(suite.T(), string(out), "")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackReferenceDiscoveryFailure() {
 	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
