@@ -58,11 +58,24 @@ $(GO_BINARIES): $(BIN)/%: cmd/% FORCE | $(BIN)
 ###########################################################################
 
 # Testing
+FAILPOINT_ENABLE := tools/bin/failpoint-ctl enable
+FAILPOINT_DISABLE := tools/bin/failpoint-ctl disable
+
+tools/bin/failpoint-ctl:
+	GOBIN=$(shell pwd)/tools/bin $(GO) install github.com/pingcap/failpoint/failpoint-ctl@v0.0.0-20220801062533-2eaa32854a6c
+
+failpoint-enable: tools/bin/failpoint-ctl
+	@echo "$(M) enabling failpoints..."
+	@$(FAILPOINT_ENABLE)
+
+failpoint-disable: tools/bin/failpoint-ctl
+	@echo "$(M) disabling failpoints..."
+	@$(FAILPOINT_DISABLE)
 
 .PHONY: test
 test: go-test
 test-integration: BUILDTAGS=-tags integration
-test-integration: all go-binaries go-test-integration
+test-integration: failpoint-enable all go-binaries go-test-integration
 
 TESTFLAGS := -race -timeout 60s
 TESTINTEGRATIONFLAGS := $(TESTFLAGS) --tags=integration
@@ -78,6 +91,9 @@ go-test-integration:
 	# Add our compiled `spokes-receive-pack` to the PATH while running tests:
 	PATH="$(CURDIR)/bin:$(PATH)" \
 	    $(GO) test $(TESTINTEGRATIONFLAGS) $(TESTSUITE) 2>&1
+	
+	@echo "$(M) disabling failpoints ..."
+	@$(FAILPOINT_DISABLE)
 
 CLEAN += log/*.log
 
