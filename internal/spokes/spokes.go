@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	capabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1"
+	capabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1 quiet"
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
@@ -547,7 +547,11 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	// FIXME? add --pack_header similar to git's push_header_arg
 
 	if useSideBand(capabilities) {
-		args = append(args, "--show-resolving-progress", "--report-end-of-input")
+		args = append(args, "--report-end-of-input")
+	}
+
+	if useSideBand(capabilities) && !isQuiet(capabilities) {
+		args = append(args, "--show-resolving-progress")
 	}
 
 	args = append(args, "--fix-thin")
@@ -924,6 +928,10 @@ func includeNonDeletes(commands []command) bool {
 		}
 	}
 	return false
+}
+
+func isQuiet(c pktline.Capabilities) bool {
+	return c.IsDefined(pktline.Quiet)
 }
 
 func useSideBand(c pktline.Capabilities) bool {
