@@ -25,7 +25,7 @@ const (
 	ReportStatus             = "report-status"
 	ReportStatusV2           = "report-status-v2"
 	DeleteRefs               = "delete-refs"
-	Quiet                    = "quite"
+	Quiet                    = "quiet"
 	Atomic                   = "atomic"
 	PushOptions              = "push-options"
 	AllowTipSha1InWant       = "allow-tip-sha1-in-want"
