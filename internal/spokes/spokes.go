@@ -205,6 +205,12 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		}
 	}
 
+	failpoint.Inject("unpack-error", func(val failpoint.Value) {
+		if val.(bool) {
+			failpoint.Return(errors.New("error performing the unpack process"))
+		}
+	})
+
 	if unpackErr != nil {
 		return fmt.Errorf("index-pack: %w", unpackErr)
 	}
