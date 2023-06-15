@@ -93,6 +93,8 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		governor:         g,
 	}
 
+	registerShutdownHooks(rp)
+
 	if err := rp.execute(ctx); err != nil {
 		g.SetError(1, err.Error())
 
