@@ -97,12 +97,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 
 	if err := rp.execute(ctx); err != nil {
 		g.SetError(1, err.Error())
-
-		// Let's make sure we don't leave any quarantine files behind if something goes wrong
-		// If the error has happened before we have created the quarantine dir, we don't need to remove it, but RemoveAll won't fail
-		// If the error has happened after we have created the quarantine dir, the folder will be removed
-		_ = os.RemoveAll(quarantineFolder)
-
+		rp.Close()
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}
 
