@@ -135,6 +135,13 @@ type spokesReceivePack struct {
 	governor         *governor.Conn
 }
 
+func (r *spokesReceivePack) Close() error {
+	// Let's make sure we don't leave any quarantine files behind if something goes wrong
+	// If the error has happened before we have created the quarantine dir, we don't need to remove it, but RemoveAll won't fail
+	// If the error has happened after we have created the quarantine dir, the folder will be removed
+	return os.RemoveAll(r.quarantineFolder)
+}
+
 // execute executes our custom implementation
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
