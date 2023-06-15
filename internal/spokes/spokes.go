@@ -107,6 +107,18 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	return 0, nil
 }
 
+func registerShutdownHooks(hooks ...io.Closer) {
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		<-c
+		for _, hook := range hooks {
+			hook.Close()
+		}
+		os.Exit(1)
+	}()
+}
+
 // spokesReceivePack is used to model our own impl of the git-receive-pack
 type spokesReceivePack struct {
 	input            io.Reader
