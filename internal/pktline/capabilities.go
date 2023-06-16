@@ -2,6 +2,7 @@ package pktline
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -169,6 +170,15 @@ func (c Capabilities) Filter() Capability {
 }
 func (c Capabilities) SessionId() Capability {
 	return c.caps[SessionId]
+}
+
+func (c Capabilities) Names() []string {
+	res := make([]string, 0, len(c.caps))
+	for k := range c.caps {
+		res = append(res, k)
+	}
+	sort.Strings(res)
+	return res
 }
 
 func (c Capabilities) Get(cap string) (Capability, bool) {

@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	capabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1 quiet"
+	supportedCapabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1 quiet"
+
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
 	nullSHA1OID         = "0000000000000000000000000000000000000000"
@@ -79,11 +80,16 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
+	capabilitiesLine := supportedCapabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
+	if requestID := os.Getenv("GIT_SOCKSTAT_VAR_request_id"); requestID != "" {
+		capabilitiesLine += " session-id=" + requestID
+	}
+
 	rp := &spokesReceivePack{
 		input:            stdin,
 		output:           stdout,
 		err:              stderr,
-		capabilities:     capabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version),
+		capabilities:     capabilitiesLine,
 		repoPath:         repoPath,
 		config:           config,
 		statelessRPC:     *statelessRPC,
