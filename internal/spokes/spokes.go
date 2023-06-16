@@ -101,13 +101,6 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	return 0, nil
 }
 
-func (r *spokesReceivePack) cleanQuarantineOnContextDone(ctx context.Context) {
-	go func() {
-		<-ctx.Done()
-		r.RemoveQuarantine()
-	}()
-}
-
 // spokesReceivePack is used to model our own impl of the git-receive-pack
 type spokesReceivePack struct {
 	input            io.Reader
@@ -133,8 +126,6 @@ func (r *spokesReceivePack) RemoveQuarantine() {
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
 func (r *spokesReceivePack) execute(ctx context.Context) error {
-	r.cleanQuarantineOnContextDone(ctx)
-
 	// Reference discovery phase
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
