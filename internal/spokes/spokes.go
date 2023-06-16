@@ -79,7 +79,6 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
-	quarantineFolder := filepath.Join(repoPath, "objects", quarantineID)
 	rp := &spokesReceivePack{
 		input:            stdin,
 		output:           stdout,
@@ -89,7 +88,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		config:           config,
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
-		quarantineFolder: quarantineFolder,
+		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
 		governor:         g,
 	}
 
