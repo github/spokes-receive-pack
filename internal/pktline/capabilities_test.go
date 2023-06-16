@@ -73,3 +73,26 @@ func TestParseCapabilitiesWithArguments(t *testing.T) {
 		)
 	}
 }
+
+func TestSafeCapabilityValue(t *testing.T) {
+	good := []string{
+		"",
+		"AA:BB:CC:01",
+		"abcdefg",
+	}
+
+	for _, s := range good {
+		assert.True(t, IsSafeCapabilityValue(s), "%q should be ok", s)
+	}
+
+	bad := []string{
+		"not valid",
+		"not\tvalid",
+		"not\rvalid",
+		"not\nvalid",
+	}
+
+	for _, s := range bad {
+		assert.False(t, IsSafeCapabilityValue(s), "%q should not be ok", s)
+	}
+}

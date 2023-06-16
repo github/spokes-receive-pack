@@ -190,3 +190,15 @@ func (c Capabilities) IsDefined(cap string) bool {
 	_, found := c.caps[cap]
 	return found
 }
+
+func IsSafeCapabilityValue(val string) bool {
+	// Git needs this not to include \r, \n, \t, or ' '.
+	// https://github.com/git/git/blob/d7d8841f67f29e6ecbad85a11805c907d0f00d5d/connect.c#L629
+	for _, b := range []byte(val) {
+		switch b {
+		case ' ', '\r', '\n', '\t':
+			return false
+		}
+	}
+	return true
+}

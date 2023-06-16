@@ -81,7 +81,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	}
 
 	capabilitiesLine := supportedCapabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
-	if requestID := os.Getenv("GIT_SOCKSTAT_VAR_request_id"); requestID != "" {
+	if requestID := os.Getenv("GIT_SOCKSTAT_VAR_request_id"); requestID != "" && pktline.IsSafeCapabilityValue(requestID) {
 		capabilitiesLine += " session-id=" + requestID
 	}
 
