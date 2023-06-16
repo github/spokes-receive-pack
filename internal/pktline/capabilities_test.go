@@ -75,7 +75,7 @@ func TestParseCapabilitiesWithArguments(t *testing.T) {
 }
 
 func TestSafeCapabilityValue(t *testing.T) {
-	for _, p := range []struct {
+	examples := []struct {
 		val      string
 		expected bool
 	}{
@@ -86,33 +86,9 @@ func TestSafeCapabilityValue(t *testing.T) {
 		{"not\tvalid", false},
 		{"not\rvalid", false},
 		{"not\nvalid", false},
-	} {
-		t.Run(
-			fmt.Sprintf("TestSafeCapabilityValue(%s)", p.val),
-			func(t *testing.T) {
-				assert.Equal(t, p.expected, IsSafeCapabilityValue(p.val))
-			},
-		)
-	}
-}
-	good := []string{
-		"",
-		"AA:BB:CC:01",
-		"abcdefg",
 	}
 
-	for _, s := range good {
-		assert.True(t, IsSafeCapabilityValue(s), "%q should be ok", s)
-	}
-
-	bad := []string{
-		"not valid",
-		"not\tvalid",
-		"not\rvalid",
-		"not\nvalid",
-	}
-
-	for _, s := range bad {
-		assert.False(t, IsSafeCapabilityValue(s), "%q should not be ok", s)
+	for _, ex := range examples {
+		assert.Equal(t, ex.expected, IsSafeCapabilityValue(ex.val), "IsSafeCapabilityValue(%q)", ex.val)
 	}
 }
