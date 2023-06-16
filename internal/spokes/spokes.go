@@ -92,26 +92,19 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		governor:         g,
 	}
 
-	registerShutdownHooks(rp)
-
 	if err := rp.execute(ctx); err != nil {
 		g.SetError(1, err.Error())
-		rp.Close()
+		rp.RemoveQuarantine()
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}
 
 	return 0, nil
 }
 
-func registerShutdownHooks(hooks ...io.Closer) {
+func (r *spokesReceivePack) cleanQuarantineOnContextDone(ctx context.Context) {
 	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		<-c
-		for _, hook := range hooks {
-			hook.Close()
-		}
-		os.Exit(1)
+		<-ctx.Done()
+		r.RemoveQuarantine()
 	}()
 }
 
@@ -129,17 +122,19 @@ type spokesReceivePack struct {
 	governor         *governor.Conn
 }
 
-func (r *spokesReceivePack) Close() error {
+func (r *spokesReceivePack) RemoveQuarantine() {
 	// Let's make sure we don't leave any quarantine files behind if something goes wrong
 	// If the error has happened before we have created the quarantine dir, we don't need to remove it, but RemoveAll won't fail
 	// If the error has happened after we have created the quarantine dir, the folder will be removed
-	return os.RemoveAll(r.quarantineFolder)
+	os.RemoveAll(r.quarantineFolder)
 }
 
 // execute executes our custom implementation
 // It tries to model the behaviour described in the "Pushing Data To a Server" section of the
 // https://github.com/github/git/blob/github/Documentation/technical/pack-protocol.txt document
 func (r *spokesReceivePack) execute(ctx context.Context) error {
+	r.cleanQuarantineOnContextDone(ctx)
+
 	// Reference discovery phase
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
