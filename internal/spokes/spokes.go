@@ -100,6 +100,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 
 	if err := rp.execute(ctx); err != nil {
 		g.SetError(1, err.Error())
+		rp.RemoveQuarantine()
 		return 1, fmt.Errorf("unexpected error running spokes receive pack: %w", err)
 	}
 
@@ -118,6 +119,13 @@ type spokesReceivePack struct {
 	advertiseRefs    bool
 	quarantineFolder string
 	governor         *governor.Conn
+}
+
+func (r *spokesReceivePack) RemoveQuarantine() {
+	// Let's make sure we don't leave any quarantine files behind if something goes wrong
+	// If the error has happened before we have created the quarantine dir, we don't need to remove it, but RemoveAll won't fail
+	// If the error has happened after we have created the quarantine dir, the folder will be removed
+	os.RemoveAll(r.quarantineFolder)
 }
 
 // execute executes our custom implementation
@@ -210,6 +218,12 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			return err
 		}
 	}
+
+	failpoint.Inject("unpack-error", func(val failpoint.Value) {
+		if val.(bool) {
+			failpoint.Return(errors.New("error performing the unpack process"))
+		}
+	})
 
 	if unpackErr != nil {
 		return fmt.Errorf("index-pack: %w", unpackErr)

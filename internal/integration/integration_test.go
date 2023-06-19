@@ -482,6 +482,21 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackSlowDownReadPack()
 		"unexpected error running the push with a slow read-pack; it should have succeeded")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackCleanQuarantineFolderOnFailure() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	cmd.Env = append(os.Environ(), "GO_FAILPOINTS=github.com/github/spokes-receive-pack/internal/spokes/unpack-error=return(true)")
+
+	assert.Error(
+		suite.T(),
+		cmd.Run(),
+		"unexpected success running the push with an error in the unpack process; it should have failed")
+
+	quarantineFolder := filepath.Join(suite.remoteRepo, "objects", "test_quarantine_id")
+	_, err := os.Stat(quarantineFolder)
+	assert.True(suite.T(), os.IsNotExist(err), "quarantine folder should have been cleaned up")
+}
+
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
 	var pushOut []byte
 	var pushErr error
