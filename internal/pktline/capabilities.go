@@ -2,6 +2,7 @@ package pktline
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -171,6 +172,15 @@ func (c Capabilities) SessionId() Capability {
 	return c.caps[SessionId]
 }
 
+func (c Capabilities) Names() []string {
+	res := make([]string, 0, len(c.caps))
+	for k := range c.caps {
+		res = append(res, k)
+	}
+	sort.Strings(res)
+	return res
+}
+
 func (c Capabilities) Get(cap string) (Capability, bool) {
 	capability, found := c.caps[cap]
 	return capability, found
@@ -179,4 +189,16 @@ func (c Capabilities) Get(cap string) (Capability, bool) {
 func (c Capabilities) IsDefined(cap string) bool {
 	_, found := c.caps[cap]
 	return found
+}
+
+func IsSafeCapabilityValue(val string) bool {
+	// Git needs this not to include \r, \n, \t, or ' '.
+	// https://github.com/git/git/blob/d7d8841f67f29e6ecbad85a11805c907d0f00d5d/connect.c#L629
+	for _, b := range []byte(val) {
+		switch b {
+		case ' ', '\r', '\n', '\t':
+			return false
+		}
+	}
+	return true
 }
