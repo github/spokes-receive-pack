@@ -497,6 +497,28 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackCleanQuarantineFol
 	assert.True(suite.T(), os.IsNotExist(err), "quarantine folder should have been cleaned up")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackQuarantineFolderIsNotEagerlyCreated() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	// Don't use the wrapper here, because we want the push to be actually committed to the remote repo
+	push1 := exec.Command("git", "push", "r", "HEAD")
+
+	assert.NoError(
+		suite.T(),
+		push1.Run(),
+		"unexpected error running the push process; it should have succeeded")
+
+	// This time there will be no references to update, so the spokes-receive-pack program should not create a quarantine folder
+	push2 := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD")
+	assert.NoError(
+		suite.T(),
+		push2.Run(),
+		"unexpected error running the push with an error in the unpack process; it should have succeeded")
+
+	quarantineFolder := filepath.Join(suite.remoteRepo, "objects", "test_quarantine_id")
+	_, err := os.Stat(quarantineFolder)
+	assert.True(suite.T(), os.IsNotExist(err), "quarantine folder "+quarantineFolder+" should have not been created")
+}
+
 func createBogusObjectAndPush(suite *SpokesReceivePackTestSuite, validations func(*SpokesReceivePackTestSuite, error, []byte)) {
 	var pushOut []byte
 	var pushErr error

@@ -147,11 +147,6 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
-	// Create quarantine dir so that anything that tries to use the quarantine dir as GIT_OBJECT_DIRECTORY will succeed.
-	if err := r.makeQuarantineDirs(); err != nil {
-		return err
-	}
-
 	// At this point the client knows what references the server is at, so it can send a
 	//list of reference update requests.  For each reference on the server
 	//that it wants to update, it sends a line listing the obj-id currently on
@@ -174,6 +169,12 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 
 	// Now that we have all the commands sent by the client side, we are ready to process them and read the
 	// corresponding packfiles
+
+	// Create quarantine dir so that anything that tries to use the quarantine dir as GIT_OBJECT_DIRECTORY will succeed.
+	if err := r.makeQuarantineDirs(); err != nil {
+		return err
+	}
+
 	var unpackErr error
 	if unpackErr = r.readPack(ctx, commands, capabilities); unpackErr != nil {
 		for i := range commands {
