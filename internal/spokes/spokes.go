@@ -252,6 +252,10 @@ func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 	return true
 }
 
+const (
+	refAdvertisementFmtArg = "--format=%(objectname) %(refname)"
+)
+
 // performReferenceDiscovery performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
@@ -292,7 +296,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
 	p.Add(
-		pipe.Command("git", "for-each-ref", "--format=%(objectname) %(refname)"),
+		pipe.Command("git", "for-each-ref", refAdvertisementFmtArg),
 		pipe.LinewiseFunction(
 			"collect-references",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
