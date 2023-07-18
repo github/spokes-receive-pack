@@ -252,6 +252,10 @@ func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 	return true
 }
 
+const (
+	refAdvertisementFmtArg = "--format=%(objectname) %(refname)"
+)
+
 // performReferenceDiscovery performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
@@ -262,7 +266,33 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		}
 	})
 
-	hiddenRefs := r.getHiddenRefs()
+	var hidden, unhidden []string
+
+	// NOTE: this assumes that the list of hidden ref rules is flat, i.e.
+	// that there is at most one level of unhiding taking place. So we will
+	// honor something like:
+	//
+	//   [transfer]
+	//     hideRefs = refs/heads/
+	//     hideRefs = !refs/heads/unhide
+	//
+	// but not:
+	//
+	//   [transfer]
+	//     hideRefs = refs/heads/
+	//     hideRefs = !refs/heads/unhide
+	//     hideRefs = refs/heads/unhide/rehide
+	for _, rule := range r.getHiddenRefs() {
+		if len(rule) == 0 {
+			continue
+		}
+
+		if rule[0] == '!' {
+			unhidden = append(unhidden, rule[1:])
+		} else {
+			hidden = append(hidden, rule)
+		}
+	}
 
 	var wroteCapabilities bool
 	advertiseRef := func(line []byte) error {
@@ -270,13 +300,10 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			return fmt.Errorf("malformed ref line: %q", string(line))
 		}
 
-		// Ignore the current line if it is a hidden ref
-		ref := strings.TrimSuffix(string(line[41:]), "\n")
-		if ref != ".have" && isHiddenRef(ref, hiddenRefs) {
-			return nil
-		}
-
 		if wroteCapabilities {
+			// NOTE: hidden references have already been removed, so
+			// any reference that gets to this point is safe to
+			// advertise.
 			if err := writePacketf(r.output, "%s\n", line); err != nil {
 				return fmt.Errorf("writing ref advertisement packet: %w", err)
 			}
@@ -290,9 +317,14 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		return nil
 	}
 
+	excludeArgv := []string{"for-each-ref", refAdvertisementFmtArg}
+	for _, ref := range hidden {
+		excludeArgv = append(excludeArgv, fmt.Sprintf("--exclude=%s", ref))
+	}
+
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
 	p.Add(
-		pipe.Command("git", "for-each-ref", "--format=%(objectname) %(refname)"),
+		pipe.Command("git", excludeArgv...),
 		pipe.LinewiseFunction(
 			"collect-references",
 			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
@@ -300,6 +332,22 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 			},
 		),
 	)
+
+	if len(unhidden) > 0 {
+		unhiddenArgv := []string{"for-each-ref", refAdvertisementFmtArg}
+		unhiddenArgv = append(unhiddenArgv, unhidden...)
+
+		p.Add(
+			pipe.Command("git", unhiddenArgv...),
+			pipe.LinewiseFunction(
+				"collect-references",
+				func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
+					return advertiseRef(line)
+				},
+			),
+		)
+	}
+
 	// Collect the reference tips present in the parent repo in case this is a fork
 	parentRepoId := os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id")
 	advertiseTags := os.Getenv("GIT_NW_ADVERTISE_TAGS")
