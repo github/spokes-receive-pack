@@ -12,6 +12,12 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: "1.19"
+      - name: Install git.
+        run: |
+          sudo apt-get install -y libcurl4-openssl-dev
+          git clone https://github.com/git/git.git
+          git -C git checkout next
+          sudo make -j 16 -C git prefix=/usr NO_GETTEXT=YesPlease all install
       - name: Vendor modules for later steps.
         run: |
           go mod vendor
