@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	supportedCapabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic push-options object-format=sha1 quiet"
+	supportedCapabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic object-format=sha1 quiet"
 
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
@@ -83,6 +83,11 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	capabilitiesLine := supportedCapabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
 	if requestID := os.Getenv("GIT_SOCKSTAT_VAR_request_id"); requestID != "" && pktline.IsSafeCapabilityValue(requestID) {
 		capabilitiesLine += " session-id=" + requestID
+	}
+
+	// Announce the `push-options` capability if the config option is set
+	if config.Get("receive.advertisePushOptions") == "true" {
+		capabilitiesLine = capabilitiesLine + " push-options"
 	}
 
 	rp := &spokesReceivePack{
