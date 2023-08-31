@@ -50,11 +50,16 @@ func TestCapabilities(t *testing.T) {
 	requireRun(t, "git", "init", "--bare", testRepo)
 	requireRun(t, "git", "-C", testRepo, "fetch", origin, defaultBranch+":"+defaultBranch)
 
-	getCapsAdv := func(ctx context.Context, t *testing.T, extraEnv ...string) pktline.Capabilities {
+	getCapsAdv := func(ctx context.Context, t *testing.T, push_options bool, extraEnv ...string) pktline.Capabilities {
 		srp := exec.CommandContext(ctx, "spokes-receive-pack", "--stateless-rpc", "--advertise-refs", ".")
 		srp.Dir = testRepo
+		configParams := gitConfigParameters
+		if push_options {
+			configParams = gitConfigParameters + ` 'receive.advertisePushOptions=true'`
+		}
+
 		srp.Env = append(os.Environ(),
-			"GIT_CONFIG_PARAMETERS="+gitConfigParameters,
+			"GIT_CONFIG_PARAMETERS="+configParams,
 			"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 			"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
 		srp.Env = append(srp.Env, extraEnv...)
@@ -78,7 +83,7 @@ func TestCapabilities(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		caps := getCapsAdv(ctx, t, "GIT_SOCKSTAT_VAR_request_id=test:request:id")
+		caps := getCapsAdv(ctx, t, false, "GIT_SOCKSTAT_VAR_request_id=test:request:id")
 
 		assert.Equal(t, []string{
 			"agent",
@@ -86,7 +91,6 @@ func TestCapabilities(t *testing.T) {
 			"delete-refs",
 			"object-format",
 			"ofs-delta",
-			"push-options",
 			"quiet",
 			"report-status",
 			"report-status-v2",
@@ -103,7 +107,29 @@ func TestCapabilities(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		caps := getCapsAdv(ctx, t)
+		caps := getCapsAdv(ctx, t, false)
+
+		assert.Equal(t, []string{
+			"agent",
+			"atomic",
+			"delete-refs",
+			"object-format",
+			"ofs-delta",
+			"quiet",
+			"report-status",
+			"report-status-v2",
+			"side-band-64k",
+		}, caps.Names())
+
+		assert.Equal(t, caps.ObjectFormat().Value(), "sha1")
+		assert.Regexp(t, "^github/spokes-receive-pack-[0-9a-f]+$", caps.Agent().Value())
+	})
+
+	t.Run("with push options", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		caps := getCapsAdv(ctx, t, true)
 
 		assert.Equal(t, []string{
 			"agent",
@@ -118,7 +144,6 @@ func TestCapabilities(t *testing.T) {
 			"side-band-64k",
 		}, caps.Names())
 
-		assert.Equal(t, caps.ObjectFormat().Value(), "sha1")
-		assert.Regexp(t, "^github/spokes-receive-pack-[0-9a-f]+$", caps.Agent().Value())
+		assert.Equal(t, "push-options", caps.PushOptions().Name())
 	})
 }
