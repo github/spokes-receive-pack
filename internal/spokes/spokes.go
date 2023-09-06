@@ -165,10 +165,10 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
-	pushOptions := []string{}
+	pushOptionsCount := 0
 	if capabilities.IsDefined(pktline.PushOptions) {
 		// We don't use push-options here.
-		if pushOptions, err = r.dumpPushOptions(ctx); err != nil {
+		if pushOptionsCount, err = r.dumpPushOptions(ctx); err != nil {
 			return err
 		}
 	}
@@ -178,7 +178,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return err
 	}
 
-	if optionsCountLimit > 0 && len(pushOptions) > optionsCountLimit {
+	if optionsCountLimit > 0 && pushOptionsCount > optionsCountLimit {
 		for i := range commands {
 			commands[i].err = "push options count exceeds maximum"
 			commands[i].reportFF = "ng"
@@ -603,24 +603,24 @@ func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	return commands, shallowInfo, capabilities, nil
 }
 
-func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) ([]string, error) {
+func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) (int, error) {
 	pl := pktline.New()
 
-	options := []string{}
+	optionsCount := 0
 	for {
 		err := pl.Read(r.input)
 		if err != nil {
-			return nil, fmt.Errorf("error reading push-options: %w", err)
+			return optionsCount, fmt.Errorf("error reading push-options: %w", err)
 		}
 
 		if pl.IsFlush() {
 			break
 		}
 
-		options = append(options, string(pl.Payload))
+		optionsCount += 1
 	}
 
-	return options, nil
+	return optionsCount, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
