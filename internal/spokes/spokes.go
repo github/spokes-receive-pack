@@ -165,10 +165,23 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return nil
 	}
 
+	pushOptionsCount := 0
 	if capabilities.IsDefined(pktline.PushOptions) {
 		// We don't use push-options here.
-		if err := r.dumpPushOptions(ctx); err != nil {
+		if pushOptionsCount, err = r.dumpPushOptions(ctx); err != nil {
 			return err
+		}
+	}
+
+	optionsCountLimit, err := r.getPushOptionsCountLimit()
+	if err != nil {
+		return err
+	}
+
+	if optionsCountLimit > 0 && pushOptionsCount > optionsCountLimit {
+		for i := range commands {
+			commands[i].err = "push options count exceeds maximum"
+			commands[i].reportFF = "ng"
 		}
 	}
 
@@ -590,19 +603,24 @@ func (r *spokesReceivePack) readCommands(_ context.Context) ([]command, []string
 	return commands, shallowInfo, capabilities, nil
 }
 
-func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) error {
+func (r *spokesReceivePack) dumpPushOptions(ctx context.Context) (int, error) {
 	pl := pktline.New()
 
+	optionsCount := 0
 	for {
 		err := pl.Read(r.input)
 		if err != nil {
-			return fmt.Errorf("error reading push-options: %w", err)
+			return optionsCount, fmt.Errorf("error reading push-options: %w", err)
 		}
 
 		if pl.IsFlush() {
-			return nil
+			break
 		}
+
+		optionsCount += 1
 	}
+
+	return optionsCount, nil
 }
 
 // readPack reads a packfile from `r.input` (if one is needed) and pipes it into `git index-pack`.
@@ -770,6 +788,16 @@ func (r *spokesReceivePack) getRefUpdateCommandLimit() (int, error) {
 
 	if refUpdateCommandLimit != "" {
 		return strconv.Atoi(refUpdateCommandLimit)
+	}
+
+	return 0, nil
+}
+
+func (r *spokesReceivePack) getPushOptionsCountLimit() (int, error) {
+	limit := r.config.Get("receive.pushoptionscountlimit")
+
+	if limit != "" {
+		return strconv.Atoi(limit)
 	}
 
 	return 0, nil
