@@ -69,6 +69,7 @@ type updateData struct {
 	GitProtocol      string `json:"git_protocol,omitempty"`
 	PubkeyVerifierID uint32 `json:"pubkey_verifier_id,omitempty"`
 	PubkeyCreatorID  uint32 `json:"pubkey_creator_id,omitempty"`
+	GitmonDelay      uint32 `json:"gitmon_delay,omitempty"`
 }
 
 func update(w io.Writer, ud updateData) error {
