@@ -60,7 +60,7 @@ func TestSchedule(t *testing.T) {
 			var toGov bytes.Buffer
 			fromGov := bufio.NewReader(strings.NewReader(ex.response))
 
-			err := schedule(fromGov, &toGov)
+			err := schedule(fromGov, &toGov, nil)
 
 			assert.Equal(t, ex.expectedError, err)
 			assert.Equal(t, `{"command":"schedule"}`, toGov.String())

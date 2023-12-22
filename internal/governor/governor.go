@@ -119,7 +119,7 @@ func (err FailError) Error() string {
 	return fmt.Sprintf("governor refuses to schedule us: %s", err.Reason)
 }
 
-func schedule(r *bufio.Reader, w io.Writer) error {
+func schedule(r *bufio.Reader, w io.Writer, sideband io.Writer) error {
 	const msg = `{"command":"schedule"}`
 
 	_, err := w.Write([]byte(msg))
@@ -133,6 +133,11 @@ func schedule(r *bufio.Reader, w io.Writer) error {
 	}
 
 	line := string(b[:len(b)-1])
+
+	//Forward message to gitrpcd
+	if sideband != nil {
+		sideband.Write(b)
+	}
 
 	words := strings.SplitN(line, " ", 3)
 	switch words[0] {

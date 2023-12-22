@@ -38,6 +38,17 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 		return nil, nil
 	}
 
+	var sideband *os.File
+	sidebandFD := int64(-1)
+	value, ok := os.LookupEnv("GITMON_SIDEBAND_FD")
+	if ok {
+		sidebandFD, err = strconv.ParseInt(value, 10, 64)
+		if err == nil {
+			sideband = os.NewFile(uintptr(sidebandFD), "sideband")
+			defer sideband.Close()
+		}
+	}
+
 	br := bufio.NewReader(sock)
 	for {
 		// Give governor 1s to respond each schedule call.
@@ -45,7 +56,7 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 			break
 		}
 
-		err := schedule(br, sock)
+		err := schedule(br, sock, sideband)
 		if err == nil {
 			break
 		}
@@ -57,6 +68,7 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 			sock.Close()
 			return nil, err
 		default:
+			sideband.Write([]byte("continue\n"))
 			sock.Close()
 			return nil, nil
 		}
