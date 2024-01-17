@@ -367,7 +367,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	// Collect the reference tips present in the parent repo in case this is a fork
-	parentRepoId := os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id")
+	parentRepoId := strings.TrimPrefix(os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id"), "uint:")
 	advertiseTags := os.Getenv("GIT_NW_ADVERTISE_TAGS")
 
 	if parentRepoId != "" {
