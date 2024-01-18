@@ -141,8 +141,15 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
 	if r.advertiseRefs || !r.statelessRPC {
-		if err := r.performReferenceDiscovery(ctx); err != nil {
-			return err
+		isolatedReferenceDiscovery := os.Getenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery")
+		if isolatedReferenceDiscovery == "true" {
+			if err := r.performReferenceDiscoveryIsolatedPipes(ctx); err != nil {
+				return err
+			}
+		} else {
+			if err := r.performReferenceDiscovery(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -274,10 +281,12 @@ const (
 	refAdvertisementFmtArg = "--format=%(objectname) %(refname)"
 )
 
-// performReferenceDiscovery performs the reference discovery bits of the protocol
+// performReferenceDiscoveryIsolatedPipes performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
-// terminated with a flush-pkt
-func (r *spokesReceivePack) performReferenceDiscoverySeparatePipes(ctx context.Context) error {
+// terminated with a flush-pkt.
+// Runs every collection process in a separate pipe. The reason why this methods exists is just to run this
+// behind a feature flag using the simplest apprach
+func (r *spokesReceivePack) performReferenceDiscoveryIsolatedPipes(ctx context.Context) error {
 	failpoint.Inject("reference-discovery-error", func(val failpoint.Value) {
 		if val.(bool) {
 			failpoint.Return(errors.New("reference discovery failed"))
@@ -518,7 +527,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	// Collect the reference tips present in the parent repo in case this is a fork
-	parentRepoId := strings.TrimPrefix(os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id"), "uint:")
+	parentRepoId := os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id")
 	advertiseTags := os.Getenv("GIT_NW_ADVERTISE_TAGS")
 
 	if parentRepoId != "" {
