@@ -277,7 +277,7 @@ const (
 // performReferenceDiscovery performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt
-func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
+func (r *spokesReceivePack) performReferenceDiscoverySeparatePipes(ctx context.Context) error {
 	failpoint.Inject("reference-discovery-error", func(val failpoint.Value) {
 		if val.(bool) {
 			failpoint.Return(errors.New("reference discovery failed"))
@@ -351,7 +351,13 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		),
 	)
 
+	if err := p.Run(ctx); err != nil {
+		return fmt.Errorf("collecting references: %w", err)
+	}
+
 	if len(unhidden) > 0 {
+		p = pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
+
 		unhiddenArgv := []string{"for-each-ref", refAdvertisementFmtArg}
 		unhiddenArgv = append(unhiddenArgv, unhidden...)
 
@@ -364,6 +370,10 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 				},
 			),
 		)
+
+		if err := p.Run(ctx); err != nil {
+			return fmt.Errorf("collecting unhidden references: %w", err)
+		}
 	}
 
 	// Collect the reference tips present in the parent repo in case this is a fork
@@ -379,6 +389,8 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		network, err := r.networkRepoPath()
 		// if the path in the objects/info/alternates is correct
 		if err == nil {
+			p = pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
+
 			p.Add(
 				pipe.Command(
 					"git",
@@ -393,11 +405,11 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 					},
 				),
 			)
-		}
-	}
 
-	if err := p.Run(ctx); err != nil {
-		return fmt.Errorf("collecting references: %w", err)
+			if err := p.Run(ctx); err != nil {
+				return fmt.Errorf("collecting alternate references: %w", err)
+			}
+		}
 	}
 
 	if !wroteCapabilities {
