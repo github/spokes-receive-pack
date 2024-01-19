@@ -1,12 +1,27 @@
 package sockstat
 
 import (
+	"os"
 	"strconv"
 	"strings"
 )
 
 // Prefix is the prefix that all sockstat environment variable names must have.
 const Prefix = "GIT_SOCKSTAT_VAR_"
+
+// GetString looks up the given sockstat var name in the environment and
+// interprets it as a string. If the var isn't present, the empty string is
+// returned.
+func GetString(name string) string {
+	return StringValue(os.Getenv(Prefix + name))
+}
+
+// GetUint32 looks up the given sockstat var name in the environment and
+// interprets it as a uint32. If the var isn't present or isn't a uint32, 0 is
+// returned.
+func GetUint32(name string) uint32 {
+	return Uint32Value(os.Getenv(Prefix + name))
+}
 
 // StringValue returns the string version of the given sockstat var. For the
 // most part, this means just returning the given string. However, if the input

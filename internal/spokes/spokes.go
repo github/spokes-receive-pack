@@ -23,6 +23,7 @@ import (
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/github/spokes-receive-pack/internal/governor"
 	"github.com/github/spokes-receive-pack/internal/pktline"
+	"github.com/github/spokes-receive-pack/internal/sockstat"
 	"github.com/pingcap/failpoint"
 	"golang.org/x/sync/errgroup"
 )
@@ -73,7 +74,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
-	quarantineID := os.Getenv("GIT_SOCKSTAT_VAR_quarantine_id")
+	quarantineID := sockstat.GetString("quarantine_id")
 	if quarantineID == "" {
 		err := fmt.Errorf("missing required sockstat var quarantine_id")
 		g.SetError(1, err.Error())
@@ -81,7 +82,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	}
 
 	capabilitiesLine := supportedCapabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
-	if requestID := os.Getenv("GIT_SOCKSTAT_VAR_request_id"); requestID != "" && pktline.IsSafeCapabilityValue(requestID) {
+	if requestID := sockstat.GetString("request_id"); requestID != "" && pktline.IsSafeCapabilityValue(requestID) {
 		capabilitiesLine += " session-id=" + requestID
 	}
 
@@ -386,13 +387,13 @@ func (r *spokesReceivePack) performReferenceDiscoveryIsolatedPipes(ctx context.C
 	}
 
 	// Collect the reference tips present in the parent repo in case this is a fork
-	parentRepoId := strings.TrimPrefix(os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id"), "uint:")
+	parentRepoId := sockstat.GetUint32("parent_repo_id")
 	advertiseTags := os.Getenv("GIT_NW_ADVERTISE_TAGS")
 
-	if parentRepoId != "" {
-		patterns := fmt.Sprintf("refs/remotes/%s/heads", parentRepoId)
+	if parentRepoId != 0 {
+		patterns := fmt.Sprintf("refs/remotes/%d/heads", parentRepoId)
 		if advertiseTags != "" {
-			patterns += fmt.Sprintf(" refs/remotes/%s/tags", parentRepoId)
+			patterns += fmt.Sprintf(" refs/remotes/%d/tags", parentRepoId)
 		}
 
 		network, err := r.networkRepoPath()
