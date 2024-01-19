@@ -5,9 +5,10 @@ import (
 	"context"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/github/spokes-receive-pack/internal/sockstat"
 )
 
 const (
@@ -137,82 +138,46 @@ func connect(ctx context.Context) (net.Conn, error) {
 func readSockstat(environ []string) updateData {
 	var res updateData
 
-	const prefix = "GIT_SOCKSTAT_VAR_"
 	for _, env := range environ {
-		if !strings.HasPrefix(env, prefix) {
+		if !strings.HasPrefix(env, sockstat.Prefix) {
 			continue
 		}
-		env = env[len(prefix):]
+		env = env[len(sockstat.Prefix):]
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		switch parts[0] {
 		case "repo_name":
-			res.RepoName = sockstatString(parts[1])
+			res.RepoName = sockstat.StringValue(parts[1])
 		case "repo_id":
-			res.RepoID = sockstatUint32(parts[1])
+			res.RepoID = sockstat.Uint32Value(parts[1])
 		case "network_id":
-			res.NetworkID = sockstatUint32(parts[1])
+			res.NetworkID = sockstat.Uint32Value(parts[1])
 		case "user_id":
-			res.UserID = sockstatUint32(parts[1])
+			res.UserID = sockstat.Uint32Value(parts[1])
 		case "real_ip":
-			res.RealIP = sockstatString(parts[1])
+			res.RealIP = sockstat.StringValue(parts[1])
 		case "request_id":
-			res.RequestID = sockstatString(parts[1])
+			res.RequestID = sockstat.StringValue(parts[1])
 		case "user_agent":
-			res.UserAgent = sockstatString(parts[1])
+			res.UserAgent = sockstat.StringValue(parts[1])
 		case "features":
-			res.Features = sockstatString(parts[1])
+			res.Features = sockstat.StringValue(parts[1])
 		case "via":
-			res.Via = sockstatString(parts[1])
+			res.Via = sockstat.StringValue(parts[1])
 		case "ssh_connection":
-			res.SSHConnection = sockstatString(parts[1])
+			res.SSHConnection = sockstat.StringValue(parts[1])
 		case "babeld":
-			res.Babeld = sockstatString(parts[1])
+			res.Babeld = sockstat.StringValue(parts[1])
 		case "git_protocol":
-			res.GitProtocol = sockstatString(parts[1])
+			res.GitProtocol = sockstat.StringValue(parts[1])
 		case "pubkey_verifier_id":
-			res.PubkeyVerifierID = sockstatUint32(parts[1])
+			res.PubkeyVerifierID = sockstat.Uint32Value(parts[1])
 		case "pubkey_creator_id":
-			res.PubkeyCreatorID = sockstatUint32(parts[1])
+			res.PubkeyCreatorID = sockstat.Uint32Value(parts[1])
 		}
 	}
 
 	return res
-}
-
-// sockstatUint32 parses a string like "uint32:123" and returns the parsed
-// uint32 like 123. If the prefix is missing or the value isn't a uint32,
-// return 0.
-func sockstatUint32(s string) uint32 {
-	s, ok := cutPrefix(s, "uint:")
-	if !ok {
-		return 0
-	}
-	val, err := strconv.ParseUint(s, 10, 32)
-	if err != nil {
-		return 0
-	}
-	return uint32(val)
-}
-
-// sockstatString returns the string version of the given sockstat var. For the
-// most part, this means just returning the given string. However, if the input
-// has a uint or bool prefix, strip that off so that it looks like we parsed
-// the value and then stringified it.
-func sockstatString(s string) string {
-	parts := strings.SplitN(s, ":", 2)
-	if len(parts) == 2 && (parts[0] == "uint" || parts[0] == "bool") {
-		return parts[1]
-	}
-	return s
-}
-
-// TODO: replace with Go 1.20's strings.CutPrefix
-func cutPrefix(s, prefix string) (string, bool) {
-	if !strings.HasPrefix(s, prefix) {
-		return s, false
-	}
-	return s[len(prefix):], true
 }
