@@ -23,7 +23,7 @@ func StringValue(s string) string {
 // Uint32Value parses a string like "uint32:123" and returns the parsed uint32
 // like 123. If the prefix is missing or the value isn't a uint32, return 0.
 func Uint32Value(s string) uint32 {
-	s, ok := cutPrefix(s, "uint:")
+	s, ok := strings.CutPrefix(s, "uint:")
 	if !ok {
 		return 0
 	}
@@ -32,12 +32,4 @@ func Uint32Value(s string) uint32 {
 		return 0
 	}
 	return uint32(val)
-}
-
-// TODO: replace with Go 1.20's strings.CutPrefix
-func cutPrefix(s, prefix string) (string, bool) {
-	if !strings.HasPrefix(s, prefix) {
-		return s, false
-	}
-	return s[len(prefix):], true
 }
