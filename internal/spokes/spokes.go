@@ -856,7 +856,7 @@ func (r *spokesReceivePack) makeQuarantineDirs() error {
 			failpoint.Return(errors.New("error creating quarantine dirs"))
 		}
 	})
-	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0700)
+	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0777)
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are
