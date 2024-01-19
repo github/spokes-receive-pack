@@ -56,3 +56,33 @@ func TestString(t *testing.T) {
 		}
 	}
 }
+
+func TestBool(t *testing.T) {
+	examples := []struct {
+		input  string
+		output bool
+	}{
+		// These are the only well-formed bool values.
+		{"bool:true", true},
+		{"bool:false", false},
+		// All other values end up as false.
+		{"", false},
+		{"123", false},
+		{"abc", false},
+		{"uint:-1", false},
+		{"uint:0", false},
+		{"uint:1", false},
+		{"uint:4294967295", false},
+		{"uint:4294967296", false},
+		{"bool:uint:anything", false},
+		{"uint:bool:anything", false},
+		{"anything:uint:bool", false},
+	}
+
+	for _, ex := range examples {
+		actual := BoolValue(ex.input)
+		if actual != ex.output {
+			t.Errorf("BoolValue(%q): expected %v, but was %v", ex.input, ex.output, actual)
+		}
+	}
+}

@@ -23,6 +23,13 @@ func GetUint32(name string) uint32 {
 	return Uint32Value(os.Getenv(Prefix + name))
 }
 
+// GetBool looks up the given sockstat var name in the environment and
+// interprets it as a bool. If the var isn't present or isn't true, false is
+// returned.
+func GetBool(name string) bool {
+	return BoolValue(os.Getenv(Prefix + name))
+}
+
 // StringValue returns the string version of the given sockstat var. For the
 // most part, this means just returning the given string. However, if the input
 // has a uint or bool prefix, strip that off so that it looks like we parsed
@@ -47,4 +54,9 @@ func Uint32Value(s string) uint32 {
 		return 0
 	}
 	return uint32(val)
+}
+
+// BoolValue interprets "bool:true" as true and anything else as false.
+func BoolValue(s string) bool {
+	return s == "bool:true"
 }

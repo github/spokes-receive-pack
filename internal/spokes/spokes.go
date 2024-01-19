@@ -142,8 +142,7 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
 	if r.advertiseRefs || !r.statelessRPC {
-		isolatedReferenceDiscovery := os.Getenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery")
-		if isolatedReferenceDiscovery == "true" {
+		if sockstat.GetBool("spokes_receive_pack_isolated_reference_discovery") {
 			if err := r.performReferenceDiscoveryIsolatedPipes(ctx); err != nil {
 				return err
 			}
