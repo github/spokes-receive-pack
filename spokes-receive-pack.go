@@ -7,10 +7,9 @@ import (
 	"os"
 
 	"github.com/github/spokes-receive-pack/internal/receivepack"
+	"github.com/github/spokes-receive-pack/internal/sockstat"
 	"github.com/github/spokes-receive-pack/internal/spokes"
 )
-
-const GitSockstatVarSpokesQuarantine = "GIT_SOCKSTAT_VAR_spokes_quarantine"
 
 var BuildVersion string
 
@@ -24,7 +23,7 @@ func main() {
 
 func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) (int, error) {
 	ctx := context.Background()
-	if os.Getenv(GitSockstatVarSpokesQuarantine) != "bool:true" {
+	if !sockstat.GetBool("spokes_quarantine") {
 		rp := receivepack.NewReceivePack(stdin, stdout, stderr, args)
 		if err := rp.Execute(ctx); err != nil {
 			return 1, fmt.Errorf("unexpected error running receive pack: %w", err)
