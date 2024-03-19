@@ -32,8 +32,11 @@ func TestGetConfigMultipleValues(t *testing.T) {
 	assert.NoError(t, cmd("git", "config", "receive.hiderefs", "refs/pull/").Run())
 	assert.NoError(t, cmd("git", "config", "--add", "receive.hiderefs", "refs/gh/").Run())
 	assert.NoError(t, cmd("git", "config", "--add", "receive.hiderefs", "refs/__gh__").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.fsck.missingEmail", "ignore").Run())
+	assert.NoError(t, cmd("git", "config", "--add", "receive.fsck.badTagName", "error").Run())
 
 	config, err := GetConfig(localRepo)
+	config.GetPrefix("receive.fsck")
 	assert.NoError(t, err, "unable to properly extract the receive section from the GitConfig")
 
 	values := config.GetAll("receive.hiderefs")
@@ -57,7 +60,7 @@ func TestGetConfigEntryValues(t *testing.T) {
 	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
 	assert.NoError(t, cmd("git", "config", "receive.fsckObjects", "true").Run())
 	assert.NoError(t, cmd("git", "config", "receive.maxsize", "11").Run())
-
+	
 	fsckObjects := testGetConfigEntryValue(localRepo, "receive.fsckObjects")
 	assert.Equal(t, "true", fsckObjects)
 	maxSize := testGetConfigEntryValue(localRepo, "receive.maxsize")

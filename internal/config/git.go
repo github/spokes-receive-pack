@@ -92,3 +92,20 @@ func (c *Config) GetAll(name string) []string {
 	}
 	return res
 }
+func (c *Config) GetPrefix(prefix string) []string {
+	var processedMessages []string
+	for _, entry := range c.Entries {
+		if strings.HasPrefix(entry.Key, "receive.fsck") {
+			trimmedMsg := strings.TrimPrefix(entry.Key, "receive.fsck.")
+			fmt.Println(trimmedMsg)
+			processedMessages = append(processedMessages, trimmedMsg)
+		}
+	}
+	return processedMessages
+}
+
+func (c *Config) PrintAll() { 
+	for _, entry := range c.Entries {
+		fmt.Printf("key: %s , value: %s \n", entry.Key, entry.Value)
+	}
+}
