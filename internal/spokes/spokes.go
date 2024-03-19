@@ -810,6 +810,10 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	if r.isFsckConfigEnabled() {
 		args = append(args, "--strict")
+		strictArgs := config.GetPrefix("receive.fsck")
+		if strictArgs != "" {
+			args = append(args, strictArgs)
+		}
 	}
 
 	maxSize, err := r.getMaxInputSize()
