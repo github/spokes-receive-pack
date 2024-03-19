@@ -95,10 +95,10 @@ func (c *Config) GetAll(name string) []string {
 func (c *Config) GetPrefix(prefix string) []string {
 	var processedMessages []string
 	for _, entry := range c.Entries {
-		if strings.HasPrefix(entry.Key, "receive.fsck") {
+		if strings.HasPrefix(entry.Key, prefix) {
 			trimmedMsg := strings.TrimPrefix(entry.Key, "receive.fsck.")
-			fmt.Println(trimmedMsg)
-			processedMessages = append(processedMessages, trimmedMsg)
+			formattedArg := fmt.Sprintf(`strict="%s=%s"`, trimmedMsg, entry.Value)
+			processedMessages = append(processedMessages, formattedArg)
 		}
 	}
 	return processedMessages
