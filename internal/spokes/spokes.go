@@ -816,8 +816,6 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		}
 	}
 
-	}
-
 	maxSize, err := r.getMaxInputSize()
 	if err != nil {
 		return err
