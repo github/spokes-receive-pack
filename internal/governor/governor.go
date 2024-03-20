@@ -70,6 +70,10 @@ type updateData struct {
 	PubkeyVerifierID uint32 `json:"pubkey_verifier_id,omitempty"`
 	PubkeyCreatorID  uint32 `json:"pubkey_creator_id,omitempty"`
 	GitmonDelay      uint32 `json:"gitmon_delay,omitempty"`
+	// An ID that identifies a group of commands that all make up one
+	// logical request. Is only used by the githttpdaemon to sync
+	// its gitmon proxy and request scheduler logical threads
+	CommandID string `json:"command_id,omitempty"`
 }
 
 func update(w io.Writer, ud updateData) error {
