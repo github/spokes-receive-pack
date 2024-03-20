@@ -97,8 +97,7 @@ func (c *Config) GetPrefix(prefix string) []string {
 	for _, entry := range c.Entries {
 		if strings.HasPrefix(entry.Key, prefix) {
 			trimmedMsg := strings.TrimPrefix(entry.Key, prefix)
-			formattedArg := fmt.Sprintf(`strict="%s=%s"`, trimmedMsg, entry.Value)
-			processedMessages = append(processedMessages, formattedArg)
+			processedMessages = append(processedMessages, trimmedMsg)
 		}
 	}
 	return processedMessages
