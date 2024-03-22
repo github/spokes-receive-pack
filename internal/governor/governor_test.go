@@ -31,7 +31,15 @@ func TestSchedule(t *testing.T) {
 		},
 		{
 			response:      "wait 100\n",
-			expectedError: WaitError{Duration: 100 * time.Second},
+			expectedError: WaitError{Duration: 100 * time.Second, Reason: "UNKNOWN"},
+		},
+		{
+			response:      "wait 100 network:ip\n",
+			expectedError: WaitError{Duration: 100 * time.Second, Reason: "network:ip"},
+		},
+		{
+			response:      "wait 100 network:reason with spaces\n",
+			expectedError: WaitError{Duration: 100 * time.Second, Reason: "network:reason with spaces"},
 		},
 		{
 			response:      "fail Too Busy\n",

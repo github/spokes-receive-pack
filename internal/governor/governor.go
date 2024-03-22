@@ -91,16 +91,18 @@ func update(w io.Writer, ud updateData) error {
 
 type WaitError struct {
 	Duration time.Duration
+	Reason   string
 }
 
-func newWaitError(duration time.Duration) error {
+func newWaitError(duration time.Duration, reason string) error {
 	return WaitError{
 		Duration: duration,
+		Reason:   reason,
 	}
 }
 
 func (err WaitError) Error() string {
-	return fmt.Sprintf("governor asked us to wait %s", err.Duration)
+	return fmt.Sprintf("governor asked us to wait %s: %s", err.Duration, err.Reason)
 }
 
 type FailError struct {
@@ -132,12 +134,13 @@ func schedule(r *bufio.Reader, w io.Writer) error {
 
 	line := string(b[:len(b)-1])
 
-	words := strings.SplitN(line, " ", 2)
+	words := strings.SplitN(line, " ", 3)
 	switch words[0] {
 	case "continue":
 		return nil
 	case "wait":
 		duration := 1 * time.Second
+		reason := "UNKNOWN"
 		if len(words) > 1 {
 			d, err := strconv.Atoi(words[1])
 			if err != nil {
@@ -146,11 +149,14 @@ func schedule(r *bufio.Reader, w io.Writer) error {
 				duration = time.Duration(d) * time.Second
 			}
 		}
-		return newWaitError(duration)
+		if len(words) > 2 {
+			reason = strings.Join(words[2:], " ")
+		}
+		return newWaitError(duration, reason)
 	case "fail":
 		reason := "UNKNOWN"
 		if len(words) > 1 {
-			reason = words[1]
+			reason = strings.Join(words[1:], " ")
 		}
 		return newFailError(reason)
 	default:
