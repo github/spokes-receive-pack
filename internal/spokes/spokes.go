@@ -22,6 +22,7 @@ import (
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/github/spokes-receive-pack/internal/governor"
+	"github.com/github/spokes-receive-pack/internal/objectformat"
 	"github.com/github/spokes-receive-pack/internal/pktline"
 	"github.com/github/spokes-receive-pack/internal/sockstat"
 	"github.com/pingcap/failpoint"
@@ -33,8 +34,8 @@ const (
 
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
-	nullSHA1OID         = "0000000000000000000000000000000000000000"
-	nullSHA256OID       = "000000000000000000000000000000000000000000000000000000000000"
+	nullSHA1OID         = objectformat.NullOIDSHA1
+	nullSHA256OID       = objectformat.NullOIDSHA256
 )
 
 // Exec is similar to a main func for the new version of receive-pack.
