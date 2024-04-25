@@ -22,6 +22,7 @@ import (
 	"github.com/github/go-pipe/pipe"
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/github/spokes-receive-pack/internal/governor"
+	"github.com/github/spokes-receive-pack/internal/objectformat"
 	"github.com/github/spokes-receive-pack/internal/pktline"
 	"github.com/github/spokes-receive-pack/internal/sockstat"
 	"github.com/pingcap/failpoint"
@@ -29,12 +30,10 @@ import (
 )
 
 const (
-	supportedCapabilities = "report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic object-format=sha1 quiet"
-
 	// maximum length of a pkt-line's data component
 	maxPacketDataLength = 65516
-	nullSHA1OID         = "0000000000000000000000000000000000000000"
-	nullSHA256OID       = "000000000000000000000000000000000000000000000000000000000000"
+	nullSHA1OID         = objectformat.NullOIDSHA1
+	nullSHA256OID       = objectformat.NullOIDSHA256
 )
 
 // Exec is similar to a main func for the new version of receive-pack.
@@ -74,6 +73,12 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
+	objectFormat, err := objectformat.GetObjectFormat(".")
+	if err != nil {
+		g.SetError(1, err.Error())
+		return 1, err
+	}
+
 	quarantineID := sockstat.GetString("quarantine_id")
 	if quarantineID == "" {
 		err := fmt.Errorf("missing required sockstat var quarantine_id")
@@ -81,7 +86,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		return 1, err
 	}
 
-	capabilitiesLine := supportedCapabilities + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
+	capabilitiesLine := supportedCapabilities(objectFormat) + fmt.Sprintf(" agent=github/spokes-receive-pack-%s", version)
 	if requestID := sockstat.GetString("request_id"); requestID != "" && pktline.IsSafeCapabilityValue(requestID) {
 		capabilitiesLine += " session-id=" + requestID
 	}
@@ -98,6 +103,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		capabilities:     capabilitiesLine,
 		repoPath:         repoPath,
 		config:           config,
+		objectFormat:     objectFormat,
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
 		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
@@ -121,6 +127,7 @@ type spokesReceivePack struct {
 	capabilities     string
 	repoPath         string
 	config           *config.Config
+	objectFormat     objectformat.ObjectFormat
 	statelessRPC     bool
 	advertiseRefs    bool
 	quarantineFolder string
@@ -256,6 +263,13 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func supportedCapabilities(of objectformat.ObjectFormat) string {
+	return fmt.Sprintf(
+		"report-status report-status-v2 delete-refs side-band-64k ofs-delta atomic object-format=%s quiet",
+		of,
+	)
 }
 
 func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool {
@@ -422,7 +436,7 @@ func (r *spokesReceivePack) performReferenceDiscoveryIsolatedPipes(ctx context.C
 	}
 
 	if !wroteCapabilities {
-		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, r.capabilities); err != nil {
+		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", r.objectFormat.NullOID(), r.capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
@@ -561,7 +575,7 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 	}
 
 	if !wroteCapabilities {
-		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", nullSHA1OID, r.capabilities); err != nil {
+		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", r.objectFormat.NullOID(), r.capabilities); err != nil {
 			return fmt.Errorf("writing lonely capability packet: %w", err)
 		}
 	}
