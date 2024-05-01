@@ -83,6 +83,28 @@ func TestGetConfigEntryMultipleValues(t *testing.T) {
 	fsckObjects := testGetConfigEntryValue(localRepo, "receive.multivalue")
 	assert.Equal(t, "c", fsckObjects)
 }
+func TestGetPrefixParsesArgs(t *testing.T) {
+	localRepo, err := os.MkdirTemp("", "repo")
+	defer os.RemoveAll(localRepo)
+
+	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
+
+	cmd := commandBuilderInDir(localRepo)
+
+	// init and config the local Git repo
+	assert.NoError(t, cmd("git", "init").Run())
+	assert.NoError(t, cmd("git", "config", "user.email", "spokes-receive-pack@github.com").Run())
+	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
+	assert.NoError(t, cmd("git", "config", "receive.fsck.missingEmail", "ignore").Run())
+	assert.NoError(t, cmd("git", "config", "receive.fsck.badTagName", "ignore").Run())
+
+	config, _ := GetConfig(localRepo)
+	prefix := config.GetPrefix("receive.fsck.")
+
+	assert.Equal(t, prefix["missingemail"][0], "ignore")
+	assert.Equal(t, prefix["badtagname"][0], "ignore")
+}
+
 
 func commandBuilderInDir(dir string) func(string, ...string) *exec.Cmd {
 	return func(program string, args ...string) *exec.Cmd {

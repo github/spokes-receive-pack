@@ -92,3 +92,13 @@ func (c *Config) GetAll(name string) []string {
 	}
 	return res
 }
+func (c *Config) GetPrefix(prefix string) map[string][]string {
+	var m = make(map[string][]string)
+	for _, entry := range c.Entries {
+		if strings.HasPrefix(entry.Key, prefix) {
+			trimmedKey := strings.TrimPrefix(entry.Key, prefix)
+			m[trimmedKey] = append(m[trimmedKey], entry.Value)
+		}
+	}
+	return m 
+}
