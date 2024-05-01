@@ -97,12 +97,14 @@ func TestGetPrefixParsesArgs(t *testing.T) {
 	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
 	assert.NoError(t, cmd("git", "config", "receive.fsck.missingEmail", "ignore").Run())
 	assert.NoError(t, cmd("git", "config", "receive.fsck.badTagName", "ignore").Run())
+	assert.NoError(t, cmd("git", "config","--add", "receive.fsck.badTagName", "error").Run())
 
 	config, _ := GetConfig(localRepo)
 	prefix := config.GetPrefix("receive.fsck.")
 
 	assert.Equal(t, prefix["missingemail"][0], "ignore")
 	assert.Equal(t, prefix["badtagname"][0], "ignore")
+	assert.Equal(t, prefix["badtagname"][1], "error")
 }
 
 

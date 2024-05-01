@@ -378,6 +378,39 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 	})
 }
 
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackIgnoreArgsSucceed() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsck.missingEmail", "ignore").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsck.badTagName", "ignore").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
+	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, _ []byte) {
+		assert.NoError(
+			suite.T(),
+			err,
+			"unexpected error running the push with the custom spokes-receive-pack program; it should have succeeded since fsck args are ignored")
+	})
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMissingArgsFails() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsck.missingEmail", "error").Run())
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsck.badTagName", "error").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
+	createBogusObjectAndPush(suite, func(suite *SpokesReceivePackTestSuite, err error, _ []byte) {
+		assert.Error(
+			suite.T(),
+			err,
+			"unexpected success running the push with the custom spokes-receive-pack program; it should have failed due to missing fsck args")
+	})
+}
+
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackPushFromShallowClone() {
 	var cmd *exec.Cmd
 
