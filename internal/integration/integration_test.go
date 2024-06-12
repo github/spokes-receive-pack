@@ -191,8 +191,11 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackHiddenRefs() {
 }
 
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
-	govSock, msgs, cleanup := startFakeGovernor(suite.T())
+	started := make(chan any)
+	govSock, msgs, cleanup := startFakeGovernor(suite.T(), started, nil)
 	defer cleanup()
+	// Wait for governor to start.
+	<-started
 
 	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 
@@ -228,7 +231,49 @@ func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	})
 }
 
-func startFakeGovernor(t *testing.T) (string, <-chan govMessage, func()) {
+func (suite *SpokesReceivePackTestSuite) TestFailWithCustomGovernorTimeoutAndFailClosedSet() {
+	started := make(chan any)
+	govSock, _, cleanup := startFakeGovernor(suite.T(), started, func() {
+		// Simulate a slow governor response.
+		time.Sleep(300 * time.Millisecond)
+	})
+	defer cleanup()
+	// Wait for governor to start.
+	<-started
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
+	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
+	cmd.Env = append(os.Environ(), "GIT_SOCKSTAT_PATH="+govSock)
+	cmd.Env = append(cmd.Env, "FAIL_CLOSED=1")
+	cmd.Env = append(cmd.Env, "SCHEDULE_CMD_TIMEOUT=100")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("git push output:\n%s", out)
+	assert.Error(suite.T(), err, "Should fail due to timeout")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSucceedsWithCustomGovernorTimeoutAndNoFailClosedSet() {
+	started := make(chan any)
+	govSock, _, cleanup := startFakeGovernor(suite.T(), started, func() {
+		// Simulate a slow governor response.
+		time.Sleep(300 * time.Millisecond)
+	})
+	defer cleanup()
+	// Wait for governor to start.
+	<-started
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+
+	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
+	cmd.Env = append(os.Environ(), "GIT_SOCKSTAT_PATH="+govSock)
+	cmd.Env = append(cmd.Env, "FAIL_CLOSED=0")
+	cmd.Env = append(cmd.Env, "SCHEDULE_CMD_TIMEOUT=100")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("git push output:\n%s", out)
+	assert.NoError(suite.T(), err, "Should fail not fail due to timeout")
+}
+
+func startFakeGovernor(t *testing.T, started chan any, onConnAccepted func()) (string, <-chan govMessage, func()) {
 	tmpdir, err := os.MkdirTemp("", "spokes-receive-pack-governor-*")
 	require.NoError(t, err)
 	cleanup := func() { os.RemoveAll(tmpdir) }
@@ -237,6 +282,7 @@ func startFakeGovernor(t *testing.T) (string, <-chan govMessage, func()) {
 	t.Logf("fake gov listening on %s", sockpath)
 	l, err := net.Listen("unix", sockpath)
 	require.NoError(t, err)
+	close(started)
 
 	msgs := make(chan govMessage, 2)
 	go func() {
@@ -248,6 +294,9 @@ func startFakeGovernor(t *testing.T) (string, <-chan govMessage, func()) {
 			return
 		}
 		t.Logf("gov accepted on %s", sockpath)
+		if onConnAccepted != nil {
+			onConnAccepted()
+		}
 		decoder := json.NewDecoder(conn)
 		for {
 			var msg govMessage
