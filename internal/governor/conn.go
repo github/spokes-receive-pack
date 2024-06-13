@@ -57,7 +57,7 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 	failClosed := shouldFailClosed()
 	br := bufio.NewReader(sock)
 	for {
-		// Give governor 1s to respond each schedule call.
+		// Give governor a limited time to respond.
 		if err := sock.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 			break
 		}
