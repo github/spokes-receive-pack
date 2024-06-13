@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,9 +13,23 @@ import (
 )
 
 const (
-	connectTimeout  = time.Second
-	scheduleTimeout = time.Second
+	connectTimeout = time.Second
 )
+
+func scheduleTimeout() time.Duration {
+	timeout := time.Second
+	if v := os.Getenv("SCHEDULE_CMD_TIMEOUT"); v != "" {
+		if d, err := strconv.ParseInt(v, 10, 64); err == nil {
+			timeout = time.Duration(d) * time.Millisecond
+		}
+	}
+
+	return timeout
+}
+
+func shouldFailClosed() bool {
+	return os.Getenv("FAIL_CLOSED") == "1"
+}
 
 // Start connects to governor and sends the "update" and "schedule" messages.
 //
@@ -38,10 +53,12 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 		return nil, nil
 	}
 
+	timeout := scheduleTimeout()
+	failClosed := shouldFailClosed()
 	br := bufio.NewReader(sock)
 	for {
-		// Give governor 1s to respond each schedule call.
-		if err := sock.SetReadDeadline(time.Now().Add(scheduleTimeout)); err != nil {
+		// Give governor a limited time to respond.
+		if err := sock.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 			break
 		}
 
@@ -56,6 +73,14 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 		case FailError:
 			sock.Close()
 			return nil, err
+		case net.Error:
+			sock.Close()
+
+			if e.Timeout() && failClosed {
+				return nil, err
+			}
+
+			return nil, nil
 		default:
 			sock.Close()
 			return nil, nil
