@@ -270,7 +270,7 @@ func (suite *SpokesReceivePackTestSuite) TestSucceedsWithCustomGovernorTimeoutAn
 	cmd.Env = append(cmd.Env, "SCHEDULE_CMD_TIMEOUT=100")
 	out, err := cmd.CombinedOutput()
 	suite.T().Logf("git push output:\n%s", out)
-	assert.NoError(suite.T(), err, "Should fail not fail due to timeout")
+	assert.NoError(suite.T(), err, "Should not fail due to timeout")
 }
 
 func startFakeGovernor(t *testing.T, started chan any, onConnAccepted func()) (string, <-chan govMessage, func()) {
