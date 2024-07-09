@@ -115,3 +115,45 @@ func commandBuilderInDir(dir string) func(string, ...string) *exec.Cmd {
 		return c
 	}
 }
+
+func TestParseSigned(t *testing.T) {
+	for _, c := range []struct {
+		str     string
+		want    int
+		wantErr string
+	}{
+		// valid input, no suffix
+		{"81", 81, ""},
+
+		// valid input, with lower- and upper-case suffixes
+		{"2k", 2 * 1024, ""},
+		{"3m", 3 * 1024 * 1024, ""},
+		{"4g", 4 * 1024 * 1024 * 1024, ""},
+		{"2K", 2 * 1024, ""},
+		{"3M", 3 * 1024 * 1024, ""},
+		{"4G", 4 * 1024 * 1024 * 1024, ""},
+
+		// valid negative input, with lower- and upper-case suffixes
+		{"-2k", -2 * 1024, ""},
+		{"-3m", -3 * 1024 * 1024, ""},
+		{"-4g", -4 * 1024 * 1024 * 1024, ""},
+		{"-2K", -2 * 1024, ""},
+		{"-3M", -3 * 1024 * 1024, ""},
+		{"-4G", -4 * 1024 * 1024 * 1024, ""},
+
+		// empty input, just a suffix
+		{"k", 0, "strconv.Atoi: parsing \"\": invalid syntax"},
+		{"m", 0, "strconv.Atoi: parsing \"\": invalid syntax"},
+		{"g", 0, "strconv.Atoi: parsing \"\": invalid syntax"},
+
+		// invalid input, no suffix
+		{"NaN", 0, "strconv.Atoi: parsing \"NaN\": invalid syntax"},
+	} {
+		got, gotErr := ParseSigned(c.str)
+
+		assert.Equal(t, c.want, got)
+		if c.wantErr != "" {
+			assert.EqualError(t, gotErr, c.wantErr)
+		}
+	}
+}

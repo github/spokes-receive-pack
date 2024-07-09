@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -100,5 +101,33 @@ func (c *Config) GetPrefix(prefix string) map[string][]string {
 			m[trimmedKey] = append(m[trimmedKey], entry.Value)
 		}
 	}
-	return m 
+	return m
+}
+
+// ParseSigned parses a string that may contain a signed integer with an
+// optional suffix (either 'k', 'm', or 'g' for their respective IEC values).
+func ParseSigned(str string) (int, error) {
+	factor := 1
+
+	if len(str) > 0 {
+		switch str[len(str)-1] {
+		case 'k', 'K':
+			factor = 1024
+		case 'm', 'M':
+			factor = 1024 * 1024
+		case 'g', 'G':
+			factor = 1024 * 1024 * 1024
+		}
+
+		if factor != 1 {
+			str = str[:len(str)-1]
+		}
+	}
+
+	n, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, err
+	}
+
+	return n * factor, nil
 }

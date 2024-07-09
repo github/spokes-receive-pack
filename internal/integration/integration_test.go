@@ -357,6 +357,18 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithEx
 		"unexpected error running the push with the custom spokes-receive-pack program")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWithSuffixedReceiveMaxSize() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "2G").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	assert.NoError(
+		suite.T(),
+		exec.Command(
+			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
+		"unexpected error running the push with the custom spokes-receive-pack program")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMaxSize() {
 	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	// Set a really low value to receive.maxsize in order to make it fail
