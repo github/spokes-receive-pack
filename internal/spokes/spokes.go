@@ -14,7 +14,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -954,7 +953,7 @@ func (r *spokesReceivePack) getMaxInputSize() (int, error) {
 	maxSize := r.config.Get("receive.maxsize")
 
 	if maxSize != "" {
-		return strconv.Atoi(maxSize)
+		return config.ParseSigned(maxSize)
 	}
 
 	return 0, nil
@@ -964,7 +963,7 @@ func (r *spokesReceivePack) getWarnObjectSize() (int, error) {
 	warnObjectSize := r.config.Get("receive.warnobjectsize")
 
 	if warnObjectSize != "" {
-		return strconv.Atoi(warnObjectSize)
+		return config.ParseSigned(warnObjectSize)
 	}
 
 	return 0, nil
@@ -974,7 +973,7 @@ func (r *spokesReceivePack) getRefUpdateCommandLimit() (int, error) {
 	refUpdateCommandLimit := r.config.Get("receive.refupdatecommandlimit")
 
 	if refUpdateCommandLimit != "" {
-		return strconv.Atoi(refUpdateCommandLimit)
+		return config.ParseSigned(refUpdateCommandLimit)
 	}
 
 	return 0, nil
@@ -984,7 +983,7 @@ func (r *spokesReceivePack) getPushOptionsCountLimit() (int, error) {
 	limit := r.config.Get("receive.pushoptionscountlimit")
 
 	if limit != "" {
-		return strconv.Atoi(limit)
+		return config.ParseSigned(limit)
 	}
 
 	return 0, nil
