@@ -67,7 +67,6 @@ func TestHiderefsConfig(t *testing.T) {
 	srp.Dir = testRepo
 	srp.Env = append(os.Environ(),
 		"GIT_CONFIG_PARAMETERS="+gitConfigParameters,
-		"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 		"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
 	srp.Stderr = &testLogWriter{t}
 	srpIn, err := srp.StdinPipe()

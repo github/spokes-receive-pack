@@ -60,7 +60,6 @@ func TestCapabilities(t *testing.T) {
 
 		srp.Env = append(os.Environ(),
 			"GIT_CONFIG_PARAMETERS="+configParams,
-			"GIT_SOCKSTAT_VAR_spokes_quarantine=bool:true",
 			"GIT_SOCKSTAT_VAR_quarantine_id=config-test-quarantine-id")
 		srp.Env = append(srp.Env, extraEnv...)
 		srp.Stderr = &testLogWriter{t}
