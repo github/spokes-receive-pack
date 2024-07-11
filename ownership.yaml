@@ -11,7 +11,7 @@ ownership:
   team: github/git-systems
   team_slack: git-systems
   exec_sponsor: prplr
-  product_manager: davidstaheli
+  product_manager: andrewakim
   dependencies:
   - spokesd
   sev1:
