@@ -421,7 +421,6 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 	})
 }
 
-
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackIgnoreArgsSucceed() {
 	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())

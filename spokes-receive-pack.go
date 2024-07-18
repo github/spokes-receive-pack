@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	
+
 	"github.com/github/spokes-receive-pack/internal/spokes"
 )
 
