@@ -950,8 +950,11 @@ func (r *spokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *spokesReceivePack) getMaxInputSize() (int, error) {
-	maxSize := r.config.Get("receive.maxsize")
+	if sockstat.GetBool("is_importing") {
+		return 80 * 1024 * 1024 * 1024, nil /* 80 GB */
+	}
 
+	maxSize := r.config.Get("receive.maxsize")
 	if maxSize != "" {
 		return config.ParseSigned(maxSize)
 	}
