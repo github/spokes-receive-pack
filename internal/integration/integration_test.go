@@ -341,11 +341,20 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushWithEx
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.reportStatusFF", "true").Run())
 
 	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
-	assert.NoError(
-		suite.T(),
-		exec.Command(
-			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
-		"unexpected error running the push with the custom spokes-receive-pack program")
+	push := func() {
+		assert.NoError(
+			suite.T(),
+			exec.Command(
+				"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
+			"unexpected error running the push with the custom spokes-receive-pack program")
+	}
+	push()
+
+	suite.T().Setenv("GIT_SOCKSTAT_VAR_is_importing", "bool:true")
+	push()
+
+	suite.T().Setenv("GIT_SOCKSTAT_VAR_is_importing", "bool:false")
+	push()
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWithSuffixedReceiveMaxSize() {
