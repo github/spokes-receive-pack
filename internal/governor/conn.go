@@ -205,6 +205,10 @@ func readSockstat(environ []string) updateData {
 			res.GitmonDelay = sockstat.Uint32Value(parts[1])
 		case "command_id":
 			res.CommandID = sockstat.StringValue(parts[1])
+		case "group_id":
+			res.GroupID = sockstat.StringValue(parts[1])
+		case "group_leader":
+			res.GroupLeader = sockstat.GetBool(parts[1])
 		}
 	}
 
