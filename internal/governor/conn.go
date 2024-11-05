@@ -201,8 +201,8 @@ func readSockstat(environ []string) updateData {
 			res.PubkeyVerifierID = sockstat.Uint32Value(parts[1])
 		case "pubkey_creator_id":
 			res.PubkeyCreatorID = sockstat.Uint32Value(parts[1])
-		case "gitmon_delay":
-			res.GitmonDelay = sockstat.Uint32Value(parts[1])
+		case "max_delay":
+			res.MaxDelay = sockstat.Uint32Value(parts[1])
 		case "command_id":
 			res.CommandID = sockstat.StringValue(parts[1])
 		}
