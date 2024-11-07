@@ -1,0 +1,95 @@
+#!/bin/bash
+#/ Usage: set-up-bad-date-push
+#/
+#!!! This script shouldn't need run unless we need to make changes to the
+#!!! generated Git data. You should check in the contents of
+#!!! internal/integration/testdata/bad-date.git after running this script.
+#/
+#/ Outputs:
+#/   internal/integration/testdata/bad-date.git
+#/   - Repository with commits that include malformed dates
+
+set -e
+set -o nounset
+set -o pipefail
+
+DEFAULT_BRANCH=main
+
+set -e
+set -o nounset
+
+make_repo() {
+  local object_format="$1"
+  local dest_repo="$2"
+
+  (
+    set -e
+    set -o nounset
+    set -x
+
+    cd "$(dirname "$0")"
+    rm -rf "$dest_repo"
+    git init --bare --quiet \
+      --object-format "$object_format" \
+      --initial-branch $DEFAULT_BRANCH \
+      "$dest_repo"
+    cd "$dest_repo"
+
+    rm -r hooks info
+
+    #/fi/ commit refs/heads/__BRANCH__
+    #/fi/ committer Hubot <hubot@github.com> 1681399000 +1200
+    #/fi/ data <<EOC
+    #/fi/ commit A
+    #/fi/ EOC
+    #/fi/
+    grep "#/fi/" ../../$(basename "$0") | grep -v grep | cut -d / -f 3- | cut -c 2- | sed -e "s/__BRANCH__/$DEFAULT_BRANCH/" \
+    | git -c 'fsck.badDate=warn' fast-import --quiet
+
+    commit="$(git rev-parse "${DEFAULT_BRANCH}")"
+    tree="$(git rev-parse "${DEFAULT_BRANCH}^{tree}")"
+    bad_date_commit="$(
+    (
+    set +x
+    printf 'tree %s\n' "$tree"
+    printf 'parent %s\n' "$commit"
+    printf 'author Mona Lisa <monalisa@example.com> <Mona Lisa <monalisa@example.com>@boom> 1571755547 +0000\n'
+    printf 'committer Mona Lisa <monalisa@example.com> <Mona Lisa <monalisa@example.com>@boom> 1571755547 +0000\n'
+    printf '\n'
+    printf 'bad commit\n'
+    ) | git hash-object -t commit --stdin -w
+    )"
+    git update-ref refs/heads/$DEFAULT_BRANCH $bad_date_commit
+
+    git repack -adf
+    git pack-refs --all
+    # Make sure Git doesn't delete the refs dir.
+    touch refs/.keep
+  )
+}
+
+summary() {
+  local dest_repo="$1"
+  (
+    set -e
+    set -o nounset
+    cd "$(dirname "$0")/$dest_repo"
+    echo -n "dir: "
+    pwd
+    echo -n "obj format: "
+    git rev-parse --show-object-format
+    echo -n "tip commit: "
+    git rev-parse HEAD
+  )
+}
+
+make_repo sha1   bad-date/sha1.git
+make_repo sha256 bad-date/sha256.git
+
+echo =========
+summary bad-date/sha1.git
+echo =========
+summary bad-date/sha256.git
+echo =========
+
+echo DONE
