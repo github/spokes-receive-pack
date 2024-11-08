@@ -19,7 +19,6 @@ import (
 )
 
 func TestMissingObjects(t *testing.T) {
-	const refToCreate = "refs/heads/new-branch"
 
 	x := setUpMissingObjectsTestRepo(t)
 	testRepo := x.TestRepo
@@ -48,9 +47,48 @@ func TestMissingObjects(t *testing.T) {
 			// Try to update the ref that's already there to commit C (but we won't
 			// push its parent and the remote doesn't have the parent either).
 			{info.OldOID, info.NewOID, info.Ref},
+		},
+		pack,
+	)
+
+	refStatus, unpackRes, _, err := readResult(t, srp.Out)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		info.Ref: "ng missing necessary objects",
+	}, refStatus)
+	assert.Equal(t, "unpack ok\n", unpackRes)
+}
+
+func TestDeleteAndUpdate(t *testing.T) {
+	const refToCreate = "refs/heads/new-branch"
+
+	x := setUpMissingObjectsTestRepo(t)
+	testRepo := x.TestRepo
+	info := x.Info
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	srp := startSpokesReceivePack(ctx, t, testRepo)
+
+	refs, _, err := readAdv(srp.Out)
+	require.NoError(t, err)
+	assert.Equal(t, refs, map[string]string{
+		info.Ref:    info.OldOID,
+		info.DelRef: info.OldOID,
+	})
+
+	// Send the pack that's missing a commit.
+	pack, err := os.Open("testdata/missing-objects/empty.pack")
+	require.NoError(t, err)
+	defer pack.Close()
+
+	writePushData(
+		t, srp,
+		[]refUpdate{
 			// Try to create another ref with a commit that the remote already has.
 			{objectformat.NullOIDSHA1, info.OldOID, refToCreate},
-			// Try to delete another ref.
+			// Try to delete a ref.
 			{info.OldOID, objectformat.NullOIDSHA1, info.DelRef},
 		},
 		pack,
@@ -59,9 +97,8 @@ func TestMissingObjects(t *testing.T) {
 	refStatus, unpackRes, _, err := readResult(t, srp.Out)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
-		info.Ref:    "ng missing necessary objects",
-		info.DelRef: "ok",
 		refToCreate: "ok",
+		info.DelRef: "ok",
 	}, refStatus)
 	assert.Equal(t, "unpack ok\n", unpackRes)
 }
