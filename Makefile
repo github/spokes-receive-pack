@@ -90,6 +90,7 @@ go-test-integration:
 
 	# Add our compiled `spokes-receive-pack` to the PATH while running tests:
 	PATH="$(CURDIR)/bin:$(PATH)" \
+	    GIT_CONFIG_SYSTEM="$(CURDIR)/internal/integration/testdata/gitconfig" \
 	    $(GO) test $(TESTINTEGRATIONFLAGS) $(TESTSUITE) 2>&1
 	
 	@echo "$(M) disabling failpoints ..."

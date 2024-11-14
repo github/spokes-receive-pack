@@ -54,9 +54,9 @@ func TestMissingObjects(t *testing.T) {
 	refStatus, unpackRes, _, err := readResult(t, srp.Out)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
-		info.Ref: "ng missing necessary objects",
+		info.Ref: "ng error processing packfiles: exit status 128",
 	}, refStatus)
-	assert.Equal(t, "unpack ok\n", unpackRes)
+	assert.Equal(t, "unpack index-pack failed\n", unpackRes)
 }
 
 func TestDeleteAndUpdate(t *testing.T) {
