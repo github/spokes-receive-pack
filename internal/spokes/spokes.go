@@ -807,7 +807,9 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	// mimic https://github.com/git/git/blob/950264636c68591989456e3ba0a5442f93152c1a/builtin/receive-pack.c#L2252-L2273
 	// and https://github.com/github/git/blob/d4a224977e032f93b1b8fd3201201f098d4f6757/builtin/receive-pack.c#L2362-L2386
 
-	args := []string{"index-pack", "--stdin"}
+	var args []string
+
+	args = append(args, "index-pack", "--stdin")
 
 	// FIXME? add --pack_header similar to git's push_header_arg
 
@@ -823,12 +825,15 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 
 	if r.isFsckConfigEnabled() {
 		prefix := r.config.GetPrefix("receive.fsck.")
-		if len(prefix) > 0 {
+		if len(prefix) > 0 || allowBadDate() {
 			var result string
 			for key, values := range prefix {
 				for _, value := range values {
 					result += key + "=" + value + ","
 				}
+			}
+			if allowBadDate() {
+				result += "baddate=warn,"
 			}
 			result = strings.TrimSuffix(result, ",")
 			result = "--strict=" + result
@@ -950,7 +955,7 @@ func (r *spokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *spokesReceivePack) getMaxInputSize() (int, error) {
-	if sockstat.GetBool("is_importing") {
+	if isImporting() {
 		return 80 * 1024 * 1024 * 1024, nil /* 80 GB */
 	}
 
@@ -1223,6 +1228,14 @@ func includeNonDeletes(commands []command) bool {
 
 func isQuiet(c pktline.Capabilities) bool {
 	return c.IsDefined(pktline.Quiet)
+}
+
+func isImporting() bool {
+	return sockstat.GetBool("is_importing")
+}
+
+func allowBadDate() bool {
+	return isImporting() && sockstat.GetBool("allow_baddate_in_import")
 }
 
 func useSideBand(c pktline.Capabilities) bool {

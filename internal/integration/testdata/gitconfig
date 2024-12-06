@@ -1,0 +1,4 @@
+# This file has a subset of options from our prod /etc/gitconfig.
+
+[receive]
+	fsckObjects = true

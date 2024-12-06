@@ -80,6 +80,9 @@ printf '{"push_from":"%s","push_to":"%s","ref":"refs/heads/%s","extra_ref":"refs
 printf "^%s\n%s\n" "$COMMIT_B" "$COMMIT_C" \
 | git pack-objects --revs --stdout >../bad.pack
 
+# Make an empty pack.
+git pack-objects --stdout </dev/null >../empty.pack
+
 cd ..
 rm -rf work.git
 

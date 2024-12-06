@@ -29,6 +29,14 @@ committer Spokes Receive Pack <spokes@receive.pack> 1234567890 +0000
 This commit object intentionally broken
 `
 
+var suiteDir string = func() string {
+	pwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return pwd
+}()
+
 type SpokesReceivePackTestSuite struct {
 	suite.Suite
 	localRepo, remoteRepo string
@@ -179,6 +187,28 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackHiddenRefs() {
 		"should partially succeed")
 	assert.Contains(suite.T(), string(out), "! [remote rejected] HEAD -> refs/__hidden__/anything (deny updating a hidden ref)\n",
 		"should partially fail")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestBadDate() {
+	cmd := exec.Command("git", "-C", filepath.Join(suiteDir, "testdata/bad-date/sha1.git"),
+		"push", "--receive-pack=spokes-receive-pack-wrapper", suite.remoteRepo, "main")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.Error(suite.T(), err, "expect an error a repo with a malformed committer line in a commit")
+	assert.Contains(suite.T(), string(out), " badDate:", "should complain about a bad date")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestBadDateAllowedWithOverride() {
+	cmd := exec.Command("git", "-C", filepath.Join(suiteDir, "testdata/bad-date/sha1.git"),
+		"push", "--receive-pack=spokes-receive-pack-wrapper", suite.remoteRepo, "main")
+	cmd.Env = append(os.Environ(),
+		"GIT_SOCKSTAT_VAR_is_importing=bool:true",
+		"GIT_SOCKSTAT_VAR_allow_baddate_in_import=bool:true",
+	)
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "expect the push to succeed")
+	assert.Contains(suite.T(), string(out), " badDate:", "should still complain about a bad date")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
