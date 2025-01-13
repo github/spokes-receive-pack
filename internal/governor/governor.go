@@ -74,6 +74,8 @@ type updateData struct {
 	// logical request. Is only used by the githttpdaemon to sync
 	// its gitmon proxy and request scheduler logical threads
 	CommandID string `json:"command_id,omitempty"`
+	// IsImporting is true if the command is an import.
+	IsImporting bool `json:"is_importing,omitempty"`
 }
 
 func update(w io.Writer, ud updateData) error {
