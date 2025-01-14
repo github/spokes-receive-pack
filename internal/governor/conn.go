@@ -210,7 +210,7 @@ func readSockstat(environ []string) updateData {
 		case "group_leader":
 			res.GroupLeader = sockstat.GetBool(parts[1])
 		case "is_importing":
-			res.IsImporting = sockstat.GetBool(parts[1])
+			res.IsImporting = sockstat.BoolValue(parts[1])
 		}
 	}
 
