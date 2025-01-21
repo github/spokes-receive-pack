@@ -430,7 +430,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWithSuffixedReceiv
 		suite.T(),
 		exec.Command(
 			"git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").Run(),
-		"unexpected error running the push with the custom spokes-receive-pack program")
+		"unexpected error running the push with the custom spokes-receive-pack program - ")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMaxSize() {
@@ -443,7 +443,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackMultiplePushFailMa
 	assert.Error(
 		suite.T(),
 		err,
-		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed - ")
 	outString := string(out)
 	assert.Contains(suite.T(), outString, "remote: fatal: pack exceeds maximum allowed size")
 }
