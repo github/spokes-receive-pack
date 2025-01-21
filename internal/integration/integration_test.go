@@ -211,6 +211,36 @@ func (suite *SpokesReceivePackTestSuite) TestBadDateAllowedWithOverride() {
 	assert.Contains(suite.T(), string(out), " badDate:", "should still complain about a bad date")
 }
 
+func (suite *SpokesReceivePackTestSuite) TestPushLimitAllowedWithOverride() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "1").Run())
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "-all", "--receive-pack=spokes-receive-pack-wrapper", suite.remoteRepo)
+	// 	cmd.Env = append(os.Environ(),
+	// 		"GIT_SOCKSTAT_VAR_=bool:true",
+	// 	)
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.Error(suite.T(), err, "expect the push to succeed")
+	// assert.Contains(suite.T(), string(out), " badDate:", "should still complain about a bad date")
+}
+
+// Can use this to test the push limit by setting the receive.maxsize to a low value
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowWithPushLimit() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	// Set a really low value to receive.maxsize in order to make it fail
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "1").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	out, err := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r").CombinedOutput()
+	assert.Error(
+		suite.T(),
+		err,
+		"unexpected success running the push with the custom spokes-receive-pack program; it should have failed")
+	outString := string(out)
+	assert.Contains(suite.T(), outString, "remote: fatal: pack exceeds maximum allowed size")
+}
+
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
 	started := make(chan any)
 	govSock, msgs, cleanup := startFakeGovernor(suite.T(), started, nil)

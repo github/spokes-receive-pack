@@ -92,7 +92,7 @@ go-test-integration:
 	PATH="$(CURDIR)/bin:$(PATH)" \
 	    GIT_CONFIG_SYSTEM="$(CURDIR)/internal/integration/testdata/gitconfig" \
 	    $(GO) test $(TESTINTEGRATIONFLAGS) $(TESTSUITE) 2>&1
-	
+
 	@echo "$(M) disabling failpoints ..."
 	@$(FAILPOINT_DISABLE)
 
