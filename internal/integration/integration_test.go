@@ -225,7 +225,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowedWhenWithIsI
 	assert.NoError(
 		suite.T(),
 		err,
-		"unexpected failure with the custome spokes-receive-pack program; it should have succeeded")
+		"unexpected failure with the custom spokes-receive-pack program; it should have succeeded")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowedWhenWithImportSkipPushLimitSockStat() {
@@ -242,7 +242,7 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowedWhenWithImp
 	assert.NoError(
 		suite.T(),
 		err,
-		"unexpected failure with the custome spokes-receive-pack program; it should have succeeded")
+		"unexpected failure with the custom spokes-receive-pack program; it should have succeeded")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestWithGovernor() {
