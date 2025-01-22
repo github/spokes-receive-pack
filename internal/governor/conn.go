@@ -211,6 +211,10 @@ func readSockstat(environ []string) updateData {
 			res.GroupLeader = sockstat.GetBool(parts[1])
 		case "is_importing":
 			res.IsImporting = sockstat.BoolValue(parts[1])
+		case "import_skip_push_limit":
+			res.ImportSkipPushLimit = sockstat.BoolValue(parts[1])
+		case "import_soft_throttling":
+			res.ImportSoftThrottling = sockstat.BoolValue(parts[1])
 		}
 	}
 

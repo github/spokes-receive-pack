@@ -76,6 +76,12 @@ type updateData struct {
 	CommandID string `json:"command_id,omitempty"`
 	// IsImporting is true if the command is an import.
 	IsImporting bool `json:"is_importing,omitempty"`
+	// ImportSkipPushLimit is true if the command is an import and
+	// we want to skip the push limit for a command.
+	ImportSkipPushLimit bool `json:"import_skip_push_limit,omitempty"`
+	// ImportSoftThrottling is true if the command is an import and
+	// we want to apply it some soft throttling policies.
+	ImportSoftThrottling bool `json:"import_soft_throttling,omitempty"`
 }
 
 func update(w io.Writer, ud updateData) error {
