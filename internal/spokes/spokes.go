@@ -955,11 +955,7 @@ func (r *spokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *spokesReceivePack) getMaxInputSize() (int, error) {
-	// We want to skip the default push limit when the `import_skip_push_limit`
-	// stat is set only.
-	// We keep using the `is_import` here for backward compatibility only,
-	// which should be removed on a subsequent PR.
-	if isImporting() || skipPushLimit() {
+	if skipPushLimit() {
 		return 80 * 1024 * 1024 * 1024, nil /* 80 GB */
 	}
 
