@@ -10,7 +10,7 @@ ownership:
   qos: experimental
   team: github/git-systems
   team_slack: git-systems
-  exec_sponsor: nan-h
+  exec_sponsor: shayneburgess
   product_manager: andrewakim
   dependencies:
   - spokesd
