@@ -955,12 +955,14 @@ func (r *spokesReceivePack) isFsckConfigEnabled() bool {
 }
 
 func (r *spokesReceivePack) getMaxInputSize() (int, error) {
-	// We want to skip the default push limit when the `import_skip_push_limit`
-	// stat is set only.
-	// We keep using the `is_import` here for backward compatibility only,
-	// which should be removed on a subsequent PR.
-	if isImporting() || skipPushLimit() {
-		return 80 * 1024 * 1024 * 1024, nil /* 80 GB */
+	switch {
+	case isImporting() && skipPushLimit():
+		// If the import has been allow-listed, use a higher limit.
+		return 80 * 1024 * 1024 * 1024, nil
+	case isImporting():
+		// Imports are allowed to push in 40 GiB by default. This
+		// setting makes it so that GEI has parity with ECI.
+		return 40 * 1024 * 1024 * 1024, nil
 	}
 
 	maxSize := r.config.Get("receive.maxsize")
