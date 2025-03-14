@@ -236,7 +236,25 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowedWhenWithImp
 	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
 	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
 	cmd.Env = append(os.Environ(),
+		"GIT_SOCKSTAT_VAR_is_importing=bool:true",
 		"GIT_SOCKSTAT_VAR_import_skip_push_limit=bool:true",
+	)
+	err := cmd.Run()
+	assert.NoError(
+		suite.T(),
+		err,
+		"unexpected failure with the custom spokes-receive-pack program; it should have succeeded")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackAllowedWhenImporting() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	// Set a really low value to receive.maxsize in order to make it fail
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.maxsize", "1").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--all", "--receive-pack=spokes-receive-pack-wrapper", "r")
+	cmd.Env = append(os.Environ(),
+		"GIT_SOCKSTAT_VAR_is_importing=bool:true",
 	)
 	err := cmd.Run()
 	assert.NoError(
