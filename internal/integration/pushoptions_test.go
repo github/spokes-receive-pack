@@ -126,8 +126,8 @@ func TestPushOptionsLimitCount(t *testing.T) {
 
 	// the limit is 2, let's send 3 push options
 	for i := 0; i < 3; i++ {
-		require.NoError(t, writePktlinef(srpIn,
-			fmt.Sprintf("option-%d\n", i)))
+		option := fmt.Sprintf("option-%d\n", i)
+		require.NoError(t, writePktline(srpIn, option))
 	}
 	_, err = srpIn.Write([]byte("0000"))
 	require.NoError(t, err)
