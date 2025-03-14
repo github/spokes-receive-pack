@@ -164,6 +164,11 @@ func readPktline(r io.Reader) ([]byte, error) {
 
 func writePktlinef(w io.Writer, format string, args ...interface{}) error {
 	msg := fmt.Sprintf(format, args...)
+	err := writePktline(w, msg)
+	return err
+}
+
+func writePktline(w io.Writer, msg string) error {
 	_, err := fmt.Fprintf(w, "%04x%s", 4+len(msg), msg)
 	return err
 }
