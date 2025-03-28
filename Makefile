@@ -150,6 +150,15 @@ lint: | $(GOLANGCILINT)
 	@echo "$(M) running golangci-lint"
 	$(GOLANGCILINT) run
 
+# Run modernize on all source files:
+GOLANGMODERNIZE := $(BIN)/modernize
+$(BIN)/modernize:
+	GOBIN=$(BIN) $(GO) install golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
+
+.PHONY: modernize
+modernize: | $(GOLANGMODERNIZE)
+	@echo "$(M) running golangci-lint"
+	$(GOLANGMODERNIZE) -fix -test ./...
 ###########################################################################
 
 # Cleanup
