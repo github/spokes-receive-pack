@@ -280,7 +280,7 @@ func (r *spokesReceivePack) isFastForward(c *command, ctx context.Context) bool 
 		c.oldOID,
 		c.newOID,
 	)
-	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	if err := cmd.Run(); err != nil {
@@ -667,7 +667,7 @@ func writePacketLine(w io.Writer, data []byte) error {
 
 // writePacketf formats the given data then writes the result to the output stored in the `SpokesReceivePack`
 // as a pkt-line.
-func writePacketf(w io.Writer, format string, a ...interface{}) error {
+func writePacketf(w io.Writer, format string, a ...any) error {
 	var buf bytes.Buffer
 	if _, err := fmt.Fprintf(&buf, format, a...); err != nil {
 		return fmt.Errorf("formatting packet: %w", err)
@@ -868,7 +868,7 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 		args...,
 	)
 
-	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	// index-pack will read the rest of spokes-receive-pack's stdin.
@@ -1091,7 +1091,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--alternate-refs",
 	)
 	cmd.Stderr = devNull
-	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(devNull))
@@ -1146,7 +1146,7 @@ func (r *spokesReceivePack) performCheckConnectivityOnObject(ctx context.Context
 		"--all",
 		"--alternate-refs",
 	)
-	cmd.Env = append([]string{}, os.Environ()...)
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
 
 	out, err := cmd.CombinedOutput()
@@ -1204,10 +1204,7 @@ func (r *spokesReceivePack) report(_ context.Context, unpackOK bool, commands []
 	packetMax := sideBandBufSize(capabilities)
 
 	for len(output) > 0 {
-		n := packetMax - 5
-		if len(output) < n {
-			n = len(output)
-		}
+		n := min(len(output), packetMax-5)
 		if err := writePacketf(r.output, "\x01%s", output[:n]); err != nil {
 			return fmt.Errorf("writing output to client: %w", err)
 		}
@@ -1260,7 +1257,7 @@ func sideBandBufSize(capabilities pktline.Capabilities) int {
 }
 
 func isHex(s string) bool {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			return false
