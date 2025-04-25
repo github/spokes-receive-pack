@@ -97,7 +97,7 @@ func TestGetPrefixParsesArgs(t *testing.T) {
 	assert.NoError(t, cmd("git", "config", "user.name", "spokes-receive-pack").Run())
 	assert.NoError(t, cmd("git", "config", "receive.fsck.missingEmail", "ignore").Run())
 	assert.NoError(t, cmd("git", "config", "receive.fsck.badTagName", "ignore").Run())
-	assert.NoError(t, cmd("git", "config", "--add", "receive.fsck.badTagName", "error").Run())
+	assert.NoError(t, cmd("git", "config","--add", "receive.fsck.badTagName", "error").Run())
 
 	config, _ := GetConfig(localRepo)
 	prefix := config.GetPrefix("receive.fsck.")
@@ -106,6 +106,7 @@ func TestGetPrefixParsesArgs(t *testing.T) {
 	assert.Equal(t, prefix["badtagname"][0], "ignore")
 	assert.Equal(t, prefix["badtagname"][1], "error")
 }
+
 
 func commandBuilderInDir(dir string) func(string, ...string) *exec.Cmd {
 	return func(program string, args ...string) *exec.Cmd {
