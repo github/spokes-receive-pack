@@ -2,6 +2,7 @@
 version: 1
 ownership:
 - name: spokes-receive-pack
+  maintainer: shayneburgess
   long_name: spokes-receive-pack
   description: spokes-receive-pack is a replacement for git-receive-pack containing
     only the functionality GitHub needs to process an incoming pack.
