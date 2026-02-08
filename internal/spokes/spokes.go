@@ -213,6 +213,11 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 			commands[i].reportFF = "ng"
 		}
 	} else {
+		// Write the list of new commit OIDs to a file in the quarantine directory
+		if err := r.writeNewCommitOIDs(ctx); err != nil {
+			log.Printf("writing new commit OIDs: %v", err)
+		}
+
 		// We have successfully processed the pack-files, let's check their connectivity
 		err := r.performCheckConnectivity(ctx, commands)
 
@@ -1057,6 +1062,85 @@ func (r *spokesReceivePack) makeQuarantineDirs() error {
 		}
 	})
 	return os.MkdirAll(filepath.Join(r.quarantineFolder, "pack"), 0777)
+}
+
+// writeNewCommitOIDs runs git cat-file to list all objects in the quarantine directory,
+// filters for commit objects that don't already exist in the repository,
+// and writes their OIDs to a file named new_objects_<quarantine_id>.
+func (r *spokesReceivePack) writeNewCommitOIDs(ctx context.Context) error {
+	quarantineID := filepath.Base(r.quarantineFolder)
+
+	quarantineEnv := append(os.Environ(),
+		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", r.quarantineFolder),
+		"GIT_DISABLE_ALTERNATES=1",
+	)
+
+	mainRepoEnv := append(os.Environ(),
+		fmt.Sprintf("GIT_OBJECT_DIRECTORY=%s", filepath.Join(r.repoPath, "objects")),
+	)
+
+	// List all objects in the quarantine directory
+	catFileCmd := exec.CommandContext(ctx, "git", "cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)")
+	catFileCmd.Env = quarantineEnv
+
+	// Check which OIDs are missing from the main repository
+	batchCheckCmd := exec.CommandContext(ctx, "git", "cat-file", "--buffer", "--batch-check")
+	batchCheckCmd.Env = mainRepoEnv
+
+	outputPath := filepath.Join(r.quarantineFolder, "new_objects_"+quarantineID)
+	f, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("creating new_objects file: %w", err)
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err != nil || closeErr != nil {
+			os.Remove(outputPath)
+		}
+	}()
+	bw := bufio.NewWriter(f)
+
+	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(bw))
+	p.Add(
+		pipe.CommandStage("cat-file-quarantine", catFileCmd),
+		// Filter for commit objects and emit just the OID
+		pipe.LinewiseFunction(
+			"filter-commits",
+			func(_ context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
+				parts := strings.SplitN(string(line), " ", 2)
+				if len(parts) == 2 && parts[1] == "commit" {
+					if _, err := fmt.Fprintln(stdout, parts[0]); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		),
+		pipe.CommandStage("cat-file-batch-check", batchCheckCmd),
+		// Filter for OIDs that are missing from the main repo
+		pipe.LinewiseFunction(
+			"filter-missing",
+			func(_ context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
+				parts := strings.SplitN(string(line), " ", 2)
+				if len(parts) >= 2 && parts[1] == "missing" {
+					if _, err := fmt.Fprintln(stdout, parts[0]); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		),
+	)
+
+	if err := p.Run(ctx); err != nil {
+		return fmt.Errorf("listing new commit OIDs: %w", err)
+	}
+
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("flushing new_objects file: %w", err)
+	}
+
+	return nil
 }
 
 // performCheckConnectivity checks that the "new" oid provided in `commands` are

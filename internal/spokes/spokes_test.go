@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -270,4 +271,32 @@ func TestPerformReferenceDiscovery(t *testing.T) {
 
 	assert.NoError(t, r.performReferenceDiscovery(context.Background()))
 	assert.Equal(t, expectedReferenceList, buf.String())
+}
+
+func TestWriteNewCommitOIDs(t *testing.T) {
+	origwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir("testdata/quarantine-new-commit.git"))
+	t.Cleanup(func() { _ = os.Chdir(origwd) })
+
+	var buf bytes.Buffer
+	wd, err := os.Getwd()
+	assert.NoError(t, err)
+	r := &spokesReceivePack{
+		config:           &config.Config{},
+		output:           &buf,
+		repoPath:         wd,
+		capabilities:     "anything",
+		quarantineFolder: filepath.Join(wd, "objects", "1"),
+	}
+	assert.NoError(t, r.writeNewCommitOIDs(context.Background()))
+	assert.FileExists(t, filepath.Join(wd, "objects", "1", "new_objects_1"))
+	contents, err := os.ReadFile(filepath.Join(wd, "objects", "1", "new_objects_1"))
+	assert.NoError(t, err)
+	// created by comparing the output of the two commands
+	// GIT_OBJECT_DIRECTORY=objects/1 GIT_DISABLE_ALTERNATES=1 git -C internal/spokes/testdata/quarantine-new-commit.git/ cat-file --batch-all-objects --batch-check
+	// git -C internal/spokes/testdata/quarantine-new-commit.git/ cat-file --batch-all-objects --batch-check
+	assert.Equal(t, "48caad72e15fbf5a5e5c286e19059de017c8adc0\n", string(contents))
+
+	os.Remove(filepath.Join(wd, "objects", "1", "new_objects_1"))
 }
