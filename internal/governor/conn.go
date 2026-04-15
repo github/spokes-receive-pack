@@ -49,7 +49,7 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 	updateData.Program = "spokes-receive-pack"
 	updateData.GitDir = gitDir
 	if err := update(sock, updateData); err != nil {
-		sock.Close()
+		_ = sock.Close()
 		return nil, nil
 	}
 
@@ -71,10 +71,10 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 		case WaitError:
 			time.Sleep(e.Duration)
 		case FailError:
-			sock.Close()
+			_ = sock.Close()
 			return nil, err
 		case net.Error:
-			sock.Close()
+			_ = sock.Close()
 
 			if e.Timeout() && failClosed {
 				return nil, err
@@ -82,7 +82,7 @@ func Start(ctx context.Context, gitDir string) (*Conn, error) {
 
 			return nil, nil
 		default:
-			sock.Close()
+			_ = sock.Close()
 			return nil, nil
 		}
 	}
@@ -136,7 +136,7 @@ func (c *Conn) Finish(ctx context.Context) {
 
 	_ = finish(c.sock, c.finish)
 
-	c.sock.Close()
+	_ = c.sock.Close()
 	c.sock = nil
 }
 

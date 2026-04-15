@@ -46,7 +46,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 	flag.Parse()
 
 	if flag.NArg() != 1 {
-		return 1, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %s ", flag.NArg(), flag.Args())
+		return 1, fmt.Errorf("Unexpected number of keyword args (%d). Expected repository name, got %v", flag.NArg(), flag.Args()) //nolint:staticcheck // user-facing error message
 	}
 
 	// Assume that this is a bare repository. chdir to it and take the full
@@ -137,7 +137,7 @@ func (r *spokesReceivePack) RemoveQuarantine() {
 	// Let's make sure we don't leave any quarantine files behind if something goes wrong
 	// If the error has happened before we have created the quarantine dir, we don't need to remove it, but RemoveAll won't fail
 	// If the error has happened after we have created the quarantine dir, the folder will be removed
-	os.RemoveAll(r.quarantineFolder)
+	_ = os.RemoveAll(r.quarantineFolder)
 }
 
 // execute executes our custom implementation
@@ -889,7 +889,7 @@ func (r *spokesReceivePack) readPack(ctx context.Context, commands []command, ca
 	indexPackOut := make(chan []byte, 1)
 	go func(r io.ReadCloser, res chan<- []byte) {
 		defer close(indexPackOut)
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		out, _ := io.ReadAll(r)
 		indexPackOut <- out
 	}(stdout, indexPackOut)
@@ -1259,7 +1259,7 @@ func sideBandBufSize(capabilities pktline.Capabilities) int {
 func isHex(s string) bool {
 	for i := range len(s) {
 		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { //nolint:staticcheck // clearer as-is
 			return false
 		}
 	}

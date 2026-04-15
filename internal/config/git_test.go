@@ -19,7 +19,7 @@ func testGetConfigEntryValue(repoPath, name string) string {
 
 func TestGetConfigMultipleValues(t *testing.T) {
 	localRepo, err := os.MkdirTemp("", "repo")
-	defer os.RemoveAll(localRepo)
+	defer func() { _ = os.RemoveAll(localRepo) }()
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
 
@@ -45,7 +45,7 @@ func TestGetConfigMultipleValues(t *testing.T) {
 
 func TestGetConfigEntryValues(t *testing.T) {
 	localRepo, err := os.MkdirTemp("", "repo")
-	defer os.RemoveAll(localRepo)
+	defer func() { _ = os.RemoveAll(localRepo) }()
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
 
@@ -66,7 +66,7 @@ func TestGetConfigEntryValues(t *testing.T) {
 
 func TestGetConfigEntryMultipleValues(t *testing.T) {
 	localRepo, err := os.MkdirTemp("", "repo")
-	defer os.RemoveAll(localRepo)
+	defer func() { _ = os.RemoveAll(localRepo) }()
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
 
@@ -85,7 +85,7 @@ func TestGetConfigEntryMultipleValues(t *testing.T) {
 }
 func TestGetPrefixParsesArgs(t *testing.T) {
 	localRepo, err := os.MkdirTemp("", "repo")
-	defer os.RemoveAll(localRepo)
+	defer func() { _ = os.RemoveAll(localRepo) }()
 
 	assert.NoError(t, err, fmt.Sprintf("unable to create the local Git repo: %s", err))
 
