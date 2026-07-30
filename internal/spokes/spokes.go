@@ -95,6 +95,14 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		capabilitiesLine = capabilitiesLine + " push-options"
 	}
 
+	quarantineRoot := "objects"
+	quarantineRootConfig := strings.TrimSpace(config.Get("receive.quarantineRoot"))
+	if quarantineRootConfig != "" && !filepath.IsAbs(quarantineRootConfig) && filepath.IsLocal(quarantineRootConfig) {
+		// TODO: this could probably be more restrictive, but for now just
+		// ensure it's a path within the the git repository.
+		quarantineRoot = filepath.Clean(quarantineRootConfig)
+	}
+
 	rp := &spokesReceivePack{
 		input:            stdin,
 		output:           stdout,
@@ -105,7 +113,7 @@ func Exec(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		objectFormat:     objectFormat,
 		statelessRPC:     *statelessRPC,
 		advertiseRefs:    *httpBackendInfoRefs,
-		quarantineFolder: filepath.Join(repoPath, "objects", quarantineID),
+		quarantineFolder: filepath.Join(repoPath, quarantineRoot, quarantineID),
 		governor:         g,
 	}
 

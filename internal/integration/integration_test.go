@@ -530,7 +530,6 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWrongObjectSucceed
 	})
 }
 
-
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackIgnoreArgsSucceed() {
 	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
 	require.NoError(suite.T(), exec.Command("git", "config", "receive.fsckObjects", "true").Run())
@@ -680,6 +679,26 @@ func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackCleanQuarantineFol
 	quarantineFolder := filepath.Join(suite.remoteRepo, "objects", "test_quarantine_id")
 	_, err := os.Stat(quarantineFolder)
 	assert.True(suite.T(), os.IsNotExist(err), "quarantine folder should have been cleaned up")
+}
+
+func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackWithCustomQuarantineRoot() {
+	assert.NoError(suite.T(), chdir(suite.T(), suite.remoteRepo), "unable to chdir into our remote Git repo")
+	require.NoError(suite.T(), exec.Command("git", "config", "receive.quarantineRoot", "quarantines").Run())
+
+	assert.NoError(suite.T(), chdir(suite.T(), suite.localRepo), "unable to chdir into our local Git repo")
+	cmd := exec.Command("git", "push", "--receive-pack=spokes-receive-pack-wrapper", "r", "HEAD:refs/heads/custom-quarantine-root")
+	out, err := cmd.CombinedOutput()
+	suite.T().Logf("$ %s\n%s", strings.Join(cmd.Args, " "), out)
+	assert.NoError(suite.T(), err, "unexpected error pushing with a custom quarantine root configured")
+
+	quarantineFolder := filepath.Join(suite.remoteRepo, "quarantines", "test_quarantine_id")
+	info, err := os.Stat(quarantineFolder)
+	assert.NoError(suite.T(), err, "quarantine folder should remain after a successful push")
+	assert.True(suite.T(), info.IsDir(), "quarantine folder should remain as a directory after a successful push")
+
+	defaultQuarantineFolder := filepath.Join(suite.remoteRepo, "objects", "test_quarantine_id")
+	_, err = os.Stat(defaultQuarantineFolder)
+	assert.True(suite.T(), os.IsNotExist(err), "default quarantine folder should not have been used")
 }
 
 func (suite *SpokesReceivePackTestSuite) TestSpokesReceivePackQuarantineFolderIsNotEagerlyCreated() {
