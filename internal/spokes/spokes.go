@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,9 +31,10 @@ import (
 
 const (
 	// maximum length of a pkt-line's data component
-	maxPacketDataLength = 65516
-	nullSHA1OID         = objectformat.NullOIDSHA1
-	nullSHA256OID       = objectformat.NullOIDSHA256
+	maxPacketDataLength     = 65516
+	advertisementBufferSize = 64 * 1024
+	nullSHA1OID             = objectformat.NullOIDSHA1
+	nullSHA256OID           = objectformat.NullOIDSHA256
 )
 
 // Exec is similar to a main func for the new version of receive-pack.
@@ -148,14 +150,8 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 	// We only need to perform the references discovery when we are not using the HTTP protocol or, if we are using it,
 	// we only run the discovery phase when the http-backend-info-refs/advertise-refs option has been set
 	if r.advertiseRefs || !r.statelessRPC {
-		if sockstat.GetBool("spokes_receive_pack_isolated_reference_discovery") {
-			if err := r.performReferenceDiscoveryIsolatedPipes(ctx); err != nil {
-				return err
-			}
-		} else {
-			if err := r.performReferenceDiscovery(ctx); err != nil {
-				return err
-			}
+		if err := r.performBufferedReferenceDiscovery(ctx); err != nil {
+			return err
 		}
 	}
 
@@ -261,6 +257,27 @@ func (r *spokesReceivePack) execute(ctx context.Context) error {
 		return fmt.Errorf("index-pack: %w", unpackErr)
 	}
 
+	return nil
+}
+
+func (r *spokesReceivePack) performBufferedReferenceDiscovery(ctx context.Context) error {
+	output := r.output
+	buffered := bufio.NewWriterSize(output, advertisementBufferSize)
+	r.output = buffered
+	defer func() { r.output = output }()
+
+	var err error
+	if sockstat.GetBool("spokes_receive_pack_isolated_reference_discovery") {
+		err = r.performReferenceDiscoveryIsolatedPipes(ctx)
+	} else {
+		err = r.performReferenceDiscovery(ctx)
+	}
+	if err != nil {
+		return err
+	}
+	if err := buffered.Flush(); err != nil {
+		return fmt.Errorf("flushing reference advertisement: %w", err)
+	}
 	return nil
 }
 
@@ -485,8 +502,14 @@ func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error
 		}
 	}
 
+	// The legacy pipeline starts each reference collector concurrently.
+	// Serialize complete pkt-lines and the one-time capabilities decision.
+	var advertiseMu sync.Mutex
 	var wroteCapabilities bool
 	advertiseRef := func(line []byte) error {
+		advertiseMu.Lock()
+		defer advertiseMu.Unlock()
+
 		if len(line) < 41 {
 			return fmt.Errorf("malformed ref line: %q", string(line))
 		}
