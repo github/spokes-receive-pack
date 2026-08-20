@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -271,37 +270,26 @@ func TestPerformReferenceDiscovery(t *testing.T) {
 	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
 	t.Cleanup(func() { _ = os.Chdir(origwd) })
 
-	for _, isolated := range []bool{false, true} {
-		t.Run(fmt.Sprintf("isolated=%t", isolated), func(t *testing.T) {
-			isolatedValue := ""
-			if isolated {
-				isolatedValue = "bool:true"
-			}
-			t.Setenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery", isolatedValue)
-
-			var buf bytes.Buffer
-			output := &countingWriter{w: &buf}
-			wd, _ := os.Getwd()
-			r := &spokesReceivePack{
-				config:       &config.Config{},
-				output:       output,
-				repoPath:     wd,
-				capabilities: "anything",
-			}
-
-			assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
-			assert.Equal(t, expectedReferenceList, buf.String())
-			assert.Equal(t, 1, output.writes)
-		})
+	var buf bytes.Buffer
+	output := &countingWriter{w: &buf}
+	wd, _ := os.Getwd()
+	r := &spokesReceivePack{
+		config:       &config.Config{},
+		output:       output,
+		repoPath:     wd,
+		capabilities: "anything",
 	}
+
+	assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
+	assert.Equal(t, expectedReferenceList, buf.String())
+	assert.Equal(t, 1, output.writes)
 }
 
-func TestPerformBufferedReferenceDiscoveryConcurrentCollectors(t *testing.T) {
+func TestPerformBufferedReferenceDiscoveryWithUnhiddenRefs(t *testing.T) {
 	origwd, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
 	t.Cleanup(func() { _ = os.Chdir(origwd) })
-	t.Setenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery", "")
 
 	var buf bytes.Buffer
 	output := &countingWriter{w: &buf}
@@ -317,7 +305,6 @@ func TestPerformBufferedReferenceDiscoveryConcurrentCollectors(t *testing.T) {
 	}
 
 	assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
-	assert.Equal(t, len(expectedReferenceList), buf.Len())
-	assert.True(t, strings.HasSuffix(buf.String(), "0000"))
+	assert.Equal(t, expectedReferenceList, buf.String())
 	assert.Equal(t, 1, output.writes)
 }
