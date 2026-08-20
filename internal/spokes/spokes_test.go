@@ -4,13 +4,25 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/github/spokes-receive-pack/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type countingWriter struct {
+	w      io.Writer
+	writes int
+}
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.writes++
+	return w.w.Write(p)
+}
 
 func TestCheckHiddenRefs(t *testing.T) {
 	hiddenRefs := []string{"refs/pull/", "refs/gh/", "refs/__gh__", "!refs/__gh__/svn"}
@@ -259,15 +271,53 @@ func TestPerformReferenceDiscovery(t *testing.T) {
 	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
 	t.Cleanup(func() { _ = os.Chdir(origwd) })
 
+	for _, isolated := range []bool{false, true} {
+		t.Run(fmt.Sprintf("isolated=%t", isolated), func(t *testing.T) {
+			isolatedValue := ""
+			if isolated {
+				isolatedValue = "bool:true"
+			}
+			t.Setenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery", isolatedValue)
+
+			var buf bytes.Buffer
+			output := &countingWriter{w: &buf}
+			wd, _ := os.Getwd()
+			r := &spokesReceivePack{
+				config:       &config.Config{},
+				output:       output,
+				repoPath:     wd,
+				capabilities: "anything",
+			}
+
+			assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
+			assert.Equal(t, expectedReferenceList, buf.String())
+			assert.Equal(t, 1, output.writes)
+		})
+	}
+}
+
+func TestPerformBufferedReferenceDiscoveryConcurrentCollectors(t *testing.T) {
+	origwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
+	t.Cleanup(func() { _ = os.Chdir(origwd) })
+	t.Setenv("GIT_SOCKSTAT_VAR_spokes_receive_pack_isolated_reference_discovery", "")
+
 	var buf bytes.Buffer
+	output := &countingWriter{w: &buf}
 	wd, _ := os.Getwd()
 	r := &spokesReceivePack{
-		config:       &config.Config{},
-		output:       &buf,
+		config: &config.Config{Entries: []config.ConfigEntry{
+			{Key: "transfer.hiderefs", Value: "refs/tags/"},
+			{Key: "transfer.hiderefs", Value: "!refs/tags/"},
+		}},
+		output:       output,
 		repoPath:     wd,
 		capabilities: "anything",
 	}
 
-	assert.NoError(t, r.performReferenceDiscovery(context.Background()))
-	assert.Equal(t, expectedReferenceList, buf.String())
+	assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
+	assert.Equal(t, len(expectedReferenceList), buf.Len())
+	assert.True(t, strings.HasSuffix(buf.String(), "0000"))
+	assert.Equal(t, 1, output.writes)
 }

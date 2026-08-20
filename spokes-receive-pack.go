@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	"github.com/github/spokes-receive-pack/internal/receivepack"
 	"github.com/github/spokes-receive-pack/internal/sockstat"
@@ -14,11 +15,17 @@ import (
 var BuildVersion string
 
 func main() {
+	setGOMAXPROCS()
 	exitCode, err := mainImpl(os.Stdin, os.Stdout, os.Stderr, os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 	}
 	os.Exit(exitCode)
+}
+
+func setGOMAXPROCS() {
+	// This short-lived command is serial/IO-bound; inheriting host-wide GOMAXPROCS causes large GC/runtime thread fanout.
+	runtime.GOMAXPROCS(1)
 }
 
 func mainImpl(stdin io.Reader, stdout, stderr io.Writer, args []string) (int, error) {
