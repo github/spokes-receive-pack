@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -266,13 +265,7 @@ func (r *spokesReceivePack) performBufferedReferenceDiscovery(ctx context.Contex
 	r.output = buffered
 	defer func() { r.output = output }()
 
-	var err error
-	if sockstat.GetBool("spokes_receive_pack_isolated_reference_discovery") {
-		err = r.performReferenceDiscoveryIsolatedPipes(ctx)
-	} else {
-		err = r.performReferenceDiscovery(ctx)
-	}
-	if err != nil {
+	if err := r.performReferenceDiscovery(ctx); err != nil {
 		return err
 	}
 	if err := buffered.Flush(); err != nil {
@@ -311,12 +304,10 @@ const (
 	refAdvertisementFmtArg = "--format=%(objectname) %(refname)"
 )
 
-// performReferenceDiscoveryIsolatedPipes performs the reference discovery bits of the protocol
+// performReferenceDiscovery performs the reference discovery bits of the protocol
 // It writes back to the client the capability listing and a packet-line for every reference
 // terminated with a flush-pkt.
-// Runs every collection process in a separate pipe. The reason why this methods exists is just to run this
-// behind a feature flag using the simplest apprach
-func (r *spokesReceivePack) performReferenceDiscoveryIsolatedPipes(ctx context.Context) error {
+func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
 	failpoint.Inject("reference-discovery-error", func(val failpoint.Value) {
 		if val.(bool) {
 			failpoint.Return(errors.New("reference discovery failed"))
@@ -449,151 +440,6 @@ func (r *spokesReceivePack) performReferenceDiscoveryIsolatedPipes(ctx context.C
 				return fmt.Errorf("collecting alternate references: %w", err)
 			}
 		}
-	}
-
-	if !wroteCapabilities {
-		if err := writePacketf(r.output, "%s capabilities^{}\x00%s", r.objectFormat.NullOID(), r.capabilities); err != nil {
-			return fmt.Errorf("writing lonely capability packet: %w", err)
-		}
-	}
-
-	if _, err := fmt.Fprintf(r.output, "0000"); err != nil {
-		return fmt.Errorf("writing flush packet: %w", err)
-	}
-
-	return nil
-}
-
-// performReferenceDiscovery performs the reference discovery bits of the protocol
-// It writes back to the client the capability listing and a packet-line for every reference
-// terminated with a flush-pkt
-func (r *spokesReceivePack) performReferenceDiscovery(ctx context.Context) error {
-	failpoint.Inject("reference-discovery-error", func(val failpoint.Value) {
-		if val.(bool) {
-			failpoint.Return(errors.New("reference discovery failed"))
-		}
-	})
-
-	var hidden, unhidden []string
-
-	// NOTE: this assumes that the list of hidden ref rules is flat, i.e.
-	// that there is at most one level of unhiding taking place. So we will
-	// honor something like:
-	//
-	//   [transfer]
-	//     hideRefs = refs/heads/
-	//     hideRefs = !refs/heads/unhide
-	//
-	// but not:
-	//
-	//   [transfer]
-	//     hideRefs = refs/heads/
-	//     hideRefs = !refs/heads/unhide
-	//     hideRefs = refs/heads/unhide/rehide
-	for _, rule := range r.getHiddenRefs() {
-		if len(rule) == 0 {
-			continue
-		}
-
-		if rule[0] == '!' {
-			unhidden = append(unhidden, rule[1:])
-		} else {
-			hidden = append(hidden, rule)
-		}
-	}
-
-	// The legacy pipeline starts each reference collector concurrently.
-	// Serialize complete pkt-lines and the one-time capabilities decision.
-	var advertiseMu sync.Mutex
-	var wroteCapabilities bool
-	advertiseRef := func(line []byte) error {
-		advertiseMu.Lock()
-		defer advertiseMu.Unlock()
-
-		if len(line) < 41 {
-			return fmt.Errorf("malformed ref line: %q", string(line))
-		}
-
-		if wroteCapabilities {
-			// NOTE: hidden references have already been removed, so
-			// any reference that gets to this point is safe to
-			// advertise.
-			if err := writePacketf(r.output, "%s\n", line); err != nil {
-				return fmt.Errorf("writing ref advertisement packet: %w", err)
-			}
-		} else {
-			wroteCapabilities = true
-			if err := writePacketf(r.output, "%s\x00%s\n", line, r.capabilities); err != nil {
-				return fmt.Errorf("writing capability packet: %w", err)
-			}
-		}
-
-		return nil
-	}
-
-	excludeArgv := []string{"for-each-ref", refAdvertisementFmtArg}
-	for _, ref := range hidden {
-		excludeArgv = append(excludeArgv, fmt.Sprintf("--exclude=%s", ref))
-	}
-
-	p := pipe.New(pipe.WithDir("."), pipe.WithStdout(r.output))
-	p.Add(
-		pipe.Command("git", excludeArgv...),
-		pipe.LinewiseFunction(
-			"collect-references",
-			func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
-				return advertiseRef(line)
-			},
-		),
-	)
-
-	if len(unhidden) > 0 {
-		unhiddenArgv := []string{"for-each-ref", refAdvertisementFmtArg}
-		unhiddenArgv = append(unhiddenArgv, unhidden...)
-
-		p.Add(
-			pipe.Command("git", unhiddenArgv...),
-			pipe.LinewiseFunction(
-				"collect-references",
-				func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
-					return advertiseRef(line)
-				},
-			),
-		)
-	}
-
-	// Collect the reference tips present in the parent repo in case this is a fork
-	parentRepoId := os.Getenv("GIT_SOCKSTAT_VAR_parent_repo_id")
-	advertiseTags := os.Getenv("GIT_NW_ADVERTISE_TAGS")
-
-	if parentRepoId != "" {
-		patterns := fmt.Sprintf("refs/remotes/%s/heads", parentRepoId)
-		if advertiseTags != "" {
-			patterns += fmt.Sprintf(" refs/remotes/%s/tags", parentRepoId)
-		}
-
-		network, err := r.networkRepoPath()
-		// if the path in the objects/info/alternates is correct
-		if err == nil {
-			p.Add(
-				pipe.Command(
-					"git",
-					fmt.Sprintf("--git-dir=%s", network),
-					"for-each-ref",
-					"--format=%(objectname) .have",
-					patterns),
-				pipe.LinewiseFunction(
-					"collect-alternates-references",
-					func(ctx context.Context, _ pipe.Env, line []byte, stdout *bufio.Writer) error {
-						return advertiseRef(line)
-					},
-				),
-			)
-		}
-	}
-
-	if err := p.Run(ctx); err != nil {
-		return fmt.Errorf("collecting references: %w", err)
 	}
 
 	if !wroteCapabilities {
