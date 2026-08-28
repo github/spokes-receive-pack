@@ -947,18 +947,16 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		_ = devNull.Close()
 	}()
 
-	cmd := exec.CommandContext(
-		ctx,
-		"git",
+	args := []string{
 		"rev-list",
 		"--objects",
 		"--no-object-names",
 		"--stdin",
 		"--not",
-		"--exclude-hidden=receive",
-		"--all",
-		"--alternate-refs",
-	)
+	}
+	args = append(args, r.connectivityStopperArgs(ctx)...)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = devNull
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
@@ -991,6 +989,34 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	}
 
 	return nil
+}
+
+// connectivityStopperArgs returns the rev-list arguments that mark the
+// pre-existing object graph as uninteresting for the connectivity check.
+func (r *spokesReceivePack) connectivityStopperArgs(ctx context.Context) []string {
+	if !sockstat.GetBool("spokes_receive_pack_narrow_connectivity_stopper") {
+		return []string{"--exclude-hidden=receive", "--all", "--alternate-refs"}
+	}
+
+	args := []string{"--exclude=*/*", "--branches"}
+	if r.headResolves(ctx) {
+		args = append(args, "HEAD")
+	}
+	return args
+}
+
+// headResolves reports whether `git rev-parse --verify --quiet HEAD`
+// succeeds in the current directory.
+func (r *spokesReceivePack) headResolves(ctx context.Context) bool {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--verify", "--quiet", "HEAD")
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
+	// Discard stdout (the resolved OID on success) and stderr so we
+	// neither corrupt the receive-pack protocol stream on stdout nor
+	// leak diagnostics on stderr.
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run() == nil
 }
 
 func commandsForConnectivityCheck(commands []command) []command {

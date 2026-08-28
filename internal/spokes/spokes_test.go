@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/github/spokes-receive-pack/internal/config"
+	"github.com/github/spokes-receive-pack/internal/sockstat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -307,4 +310,51 @@ func TestPerformBufferedReferenceDiscoveryWithUnhiddenRefs(t *testing.T) {
 	assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
 	assert.Equal(t, expectedReferenceList, buf.String())
 	assert.Equal(t, 1, output.writes)
+}
+
+func TestConnectivityStopperArgs(t *testing.T) {
+	origwd, err := os.Getwd()
+	require.NoError(t, err)
+	// A valid quarantine directory is required so that
+	// getAlternateObjectDirsEnv produces well-formed environment
+	// variables (an empty GIT_OBJECT_DIRECTORY would make git refuse
+	// to operate).
+	quarantine := t.TempDir()
+
+	t.Run("flag off uses legacy stoppers", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "")
+		// No filesystem operations are required: the legacy path
+		// never invokes git.
+		r := &spokesReceivePack{}
+		got := r.connectivityStopperArgs(context.Background())
+		assert.Equal(t, []string{"--exclude-hidden=receive", "--all", "--alternate-refs"}, got)
+	})
+
+	t.Run("flag on uses --exclude=*/* --branches HEAD when HEAD resolves", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		require.NoError(t, os.Chdir("testdata/lots-of-refs.git"))
+		t.Cleanup(func() { _ = os.Chdir(origwd) })
+		wd, _ := os.Getwd()
+		r := &spokesReceivePack{repoPath: wd, quarantineFolder: quarantine}
+		got := r.connectivityStopperArgs(context.Background())
+		assert.Equal(t, []string{"--exclude=*/*", "--branches", "HEAD"}, got)
+	})
+
+	t.Run("flag on omits HEAD when HEAD does not resolve", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		// A fresh repo with no commits has HEAD pointing at an
+		// unborn branch, so rev-parse --verify HEAD fails.  Use a
+		// non-bare repo to side-step any safe.bareRepository
+		// configuration the caller may have set.
+		dir := t.TempDir()
+		require.NoError(t, exec.Command("git", "init", dir).Run())
+		require.NoError(t, os.Chdir(dir))
+		t.Cleanup(func() { _ = os.Chdir(origwd) })
+		r := &spokesReceivePack{
+			repoPath:         filepath.Join(dir, ".git"),
+			quarantineFolder: quarantine,
+		}
+		got := r.connectivityStopperArgs(context.Background())
+		assert.Equal(t, []string{"--exclude=*/*", "--branches"}, got)
+	})
 }
