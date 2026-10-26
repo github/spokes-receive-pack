@@ -1,6 +1,6 @@
 module github.com/github/spokes-receive-pack
 
-go 1.24
+go 1.26
 
 require (
 	github.com/github/go-pipe v1.0.2
