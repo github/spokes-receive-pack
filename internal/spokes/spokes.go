@@ -968,7 +968,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 			func(ctx context.Context, _ pipe.Env, input io.Reader, output io.Writer) error {
 				w := bufio.NewWriter(output)
 
-				for _, c := range commands {
+				for _, c := range nonRejectedCommands {
 					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
 						return fmt.Errorf("writing to 'rev-list' input: %w", err)
 					}

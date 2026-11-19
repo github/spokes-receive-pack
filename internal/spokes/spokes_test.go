@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/github/spokes-receive-pack/internal/config"
@@ -310,6 +311,42 @@ func TestPerformBufferedReferenceDiscoveryWithUnhiddenRefs(t *testing.T) {
 	assert.NoError(t, r.performBufferedReferenceDiscovery(context.Background()))
 	assert.Equal(t, expectedReferenceList, buf.String())
 	assert.Equal(t, 1, output.writes)
+}
+
+func TestPerformCheckConnectivitySkipsDeletesAndRejected(t *testing.T) {
+	dir := t.TempDir()
+	run := func(stdin string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"--git-dir=" + dir}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=a", "GIT_AUTHOR_EMAIL=a@example.com",
+			"GIT_COMMITTER_NAME=a", "GIT_COMMITTER_EMAIL=a@example.com")
+		cmd.Stdin = strings.NewReader(stdin)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+		return string(bytes.TrimSpace(out))
+	}
+	run("", "init", "--bare")
+	tree := run("", "mktree")
+	base := run("", "commit-tree", "-m", "base", tree)
+	run("", "update-ref", "refs/heads/main", base)
+	run("", "update-ref", "refs/heads/gone", base)
+	pushed := run("", "commit-tree", "-p", base, "-m", "pushed", tree)
+	disconnected := run(fmt.Sprintf("tree %s\nparent %s\nauthor a <a@example.com> 0 +0000\ncommitter a <a@example.com> 0 +0000\n\ndisconnected\n",
+		tree, "1234567890123456789012345678901234567890"), "hash-object", "-t", "commit", "-w", "--stdin")
+	t.Setenv("GIT_DIR", dir)
+
+	r := &spokesReceivePack{repoPath: dir, quarantineFolder: t.TempDir()}
+	deleteAndRejected := []command{
+		{refname: "refs/heads/gone", oldOID: base, newOID: nullSHA1OID},
+		{refname: "refs/heads/hidden", oldOID: nullSHA1OID, newOID: "1234567890123456789012345678901234567890", err: "deny updating a hidden ref"},
+	}
+	assert.NoError(t, r.performCheckConnectivity(context.Background(), append([]command{
+		{refname: "refs/heads/main", oldOID: base, newOID: pushed},
+	}, deleteAndRejected...)))
+	assert.Error(t, r.performCheckConnectivity(context.Background(), append([]command{
+		{refname: "refs/heads/main", oldOID: base, newOID: disconnected},
+	}, deleteAndRejected...)))
 }
 
 func TestConnectivityStopperArgs(t *testing.T) {
