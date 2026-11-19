@@ -395,3 +395,139 @@ func TestConnectivityStopperArgs(t *testing.T) {
 		assert.Equal(t, []string{"--exclude=*/*", "--branches"}, got)
 	})
 }
+
+// stopperNetwork mirrors the fileserver layout: a fork using network.git as
+// an alternate, with parent refs in network.git and the parent's HEAD in
+// a separate sibling repository.
+type stopperNetwork struct {
+	fork, network string
+
+	commits map[string]string
+}
+
+// newStopperNetwork gives every non-base commit a missing parent, so the
+// connectivity tests succeed only when the intended stops are used.
+func newStopperNetwork(t *testing.T) *stopperNetwork {
+	t.Helper()
+	dir := t.TempDir()
+	n := &stopperNetwork{
+		fork:    filepath.Join(dir, "fork.git"),
+		network: filepath.Join(dir, "network.git"),
+		commits: map[string]string{},
+	}
+	runGit(t, "", "init", "--bare", n.network)
+	runGit(t, "", "init", "--bare", n.fork)
+	parent := filepath.Join(dir, "100.git")
+	runGit(t, "", "init", "--bare", parent)
+	runGit(t, "", "--git-dir="+parent, "symbolic-ref", "HEAD", "refs/heads/main")
+
+	commit := func(gitDir, name, ref string, parents ...string) {
+		tree := runGit(t, "", "--git-dir="+gitDir, "mktree")
+		var body strings.Builder
+		fmt.Fprintf(&body, "tree %s\n", tree)
+		for _, p := range parents {
+			fmt.Fprintf(&body, "parent %s\n", p)
+		}
+		fmt.Fprintf(&body, "author a <a@example.com> 0 +0000\ncommitter a <a@example.com> 0 +0000\n\n%s\n", name)
+		cmd := exec.Command("git", "--git-dir="+gitDir, "hash-object", "-t", "commit", "-w", "--stdin")
+		cmd.Stdin = strings.NewReader(body.String())
+		out, err := cmd.Output()
+		require.NoError(t, err, "hash-object %s", name)
+		n.commits[name] = string(bytes.TrimSpace(out))
+		runGit(t, "", "--git-dir="+gitDir, "update-ref", ref, n.commits[name])
+	}
+	missing := "1234567890123456789012345678901234567890"
+	commit(n.fork, "base", "refs/heads/base")
+	commit(n.fork, "topic", "refs/heads/user/topic", missing)
+	commit(n.network, "main", "refs/remotes/100/heads/main", missing)
+	commit(n.network, "second", "refs/remotes/100/heads/second", missing)
+	commit(n.network, "nested", "refs/remotes/100/heads/user/nested", missing)
+	commit(n.network, "other", "refs/remotes/200/heads/main", missing)
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(n.fork, "objects", "info", "alternates"),
+		[]byte(filepath.Join(n.network, "objects")+"\n"), 0644))
+	// GIT_DIR makes access explicit for safe.bareRepository=explicit.
+	t.Setenv("GIT_DIR", n.fork)
+	return n
+}
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	return runGitEnv(t, dir, nil, args...)
+}
+
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=a", "GIT_AUTHOR_EMAIL=a@example.com",
+		"GIT_COMMITTER_NAME=a", "GIT_COMMITTER_EMAIL=a@example.com")
+	cmd.Env = append(cmd.Env, env...)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+	return string(bytes.TrimSpace(out))
+}
+
+func TestConnectivityStopperOIDs(t *testing.T) {
+	n := newStopperNetwork(t)
+	r := &spokesReceivePack{repoPath: n.fork}
+	c := n.commits
+	commands := []command{
+		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: c["main"]},
+		{refname: "refs/heads/base", oldOID: c["nested"], newOID: c["main"]},
+		{refname: "refs/heads/new", oldOID: nullSHA1OID, newOID: c["main"]},
+	}
+
+	t.Run("flag off adds nothing", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
+		assert.Empty(t, r.connectivityStopperOIDs(context.Background(), commands))
+	})
+
+	t.Run("flag on adds matching old values", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "")
+		assert.Equal(t, []string{c["topic"]}, r.connectivityStopperOIDs(context.Background(), commands))
+	})
+
+	t.Run("flag on adds a fork parent's default branch", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
+		assert.Equal(t, []string{c["topic"], c["main"]}, r.connectivityStopperOIDs(context.Background(), commands))
+	})
+}
+
+func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
+	n := newStopperNetwork(t)
+	t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+	t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
+	quarantine := t.TempDir()
+	r := &spokesReceivePack{repoPath: n.fork, quarantineFolder: quarantine}
+	pushEnv := []string{
+		"GIT_OBJECT_DIRECTORY=" + quarantine,
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES=" + filepath.Join(n.fork, "objects"),
+	}
+	c := n.commits
+
+	onMain := runGitEnv(t, "", pushEnv, "commit-tree", c["main"]+"^{tree}", "-p", c["main"], "-m", "on main")
+	onTopic := runGitEnv(t, "", pushEnv, "commit-tree", c["topic"]+"^{tree}", "-p", c["topic"], "-m", "on topic")
+	require.NoError(t, r.performCheckConnectivity(context.Background(), []command{
+		{refname: "refs/heads/new", oldOID: nullSHA1OID, newOID: onMain},
+		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: onTopic},
+	}))
+
+	tree := runGit(t, "", "rev-parse", c["main"]+"^{tree}")
+	missingParent := "1234567890123456789012345678901234567890"
+	disconnectedCommit := fmt.Sprintf("tree %s\nparent %s\nauthor a <a@example.com> 0 +0000\ncommitter a <a@example.com> 0 +0000\n\ndisconnected\n", tree, missingParent)
+	cmd := exec.Command("git", "hash-object", "-t", "commit", "-w", "--stdin")
+	cmd.Env = append(os.Environ(), pushEnv...)
+	cmd.Stdin = bytes.NewBufferString(disconnectedCommit)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	disconnected := string(bytes.TrimSpace(out))
+	assert.Error(t, r.performCheckConnectivity(context.Background(), []command{
+		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: disconnected},
+	}))
+}
