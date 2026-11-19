@@ -558,3 +558,25 @@ func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
 		}), name)
 	}
 }
+
+func TestConnectivityCheckArgs(t *testing.T) {
+	n := newStopperNetwork(t)
+	r := &spokesReceivePack{repoPath: n.fork, quarantineFolder: t.TempDir()}
+
+	t.Run("flag off", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "")
+		assert.Equal(t,
+			[]string{"rev-list", "--objects", "--no-object-names", "--stdin", "--not",
+				"--exclude-hidden=receive", "--all", "--alternate-refs"},
+			r.connectivityCheckArgs(context.Background()))
+	})
+
+	t.Run("flag on asks for sparse edge marking", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		assert.Equal(t,
+			[]string{"-c", "revList.sparseEdges=true",
+				"rev-list", "--objects", "--no-object-names", "--stdin", "--not",
+				"--exclude=*/*", "--branches"},
+			r.connectivityCheckArgs(context.Background()))
+	})
+}
