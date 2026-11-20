@@ -1085,7 +1085,7 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 			parentRepo := filepath.Join(filepath.Dir(network), fmt.Sprintf("%d.git", parent))
 			cmd := exec.CommandContext(ctx, "git", fmt.Sprintf("--git-dir=%s", parentRepo), "symbolic-ref", "--quiet", "HEAD")
 			if out, err := cmd.Output(); err == nil {
-				if branch, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "refs/heads/"); ok {
+				if branch, ok := strings.CutPrefix(strings.TrimSuffix(string(out), "\n"), "refs/heads/"); ok {
 					ref := fmt.Sprintf("refs/remotes/%d/heads/%s", parent, branch)
 					cmd := exec.CommandContext(ctx, "git", fmt.Sprintf("--git-dir=%s", network),
 						"rev-parse", "--verify", "--quiet", "--end-of-options", ref)

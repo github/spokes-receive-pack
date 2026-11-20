@@ -505,6 +505,15 @@ func TestConnectivityStopperOIDs(t *testing.T) {
 		dir := []command{{refname: "refs/heads/user", oldOID: c["topic"], newOID: c["main"]}}
 		assert.Empty(t, r.connectivityStopperOIDs(context.Background(), dir))
 	})
+
+	t.Run("a default branch name keeps trailing non-ASCII spaces", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
+		branch := "main\u00a0"
+		runGit(t, "", "--git-dir="+filepath.Join(filepath.Dir(n.fork), "100.git"), "symbolic-ref", "HEAD", "refs/heads/"+branch)
+		runGit(t, "", "--git-dir="+n.network, "update-ref", "refs/remotes/100/heads/"+branch, c["second"])
+		assert.Equal(t, []string{c["topic"], c["second"]}, r.connectivityStopperOIDs(context.Background(), commands))
+	})
 }
 
 func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
