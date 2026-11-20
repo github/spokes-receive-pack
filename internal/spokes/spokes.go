@@ -955,8 +955,8 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--not",
 	}
 	args = append(args, r.connectivityStopperArgs(ctx)...)
-	// Deleted refs still exist during the check, so their old values are
-	// stops too (eg. a push that renames a branch).
+	// Deleted refs still exist during the check, so their values are stops
+	// too (eg. a push that renames a branch).
 	var accepted []command
 	for _, c := range commands {
 		if c.err == "" {
@@ -1036,21 +1036,24 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 		}
 	}
 
-	// Use old values only when the refs still have them, preserving the
-	// connected-ref assumption. for-each-ref treats names as patterns;
-	// reject globs and shallow prefixes, and stream any directory-prefix
-	// listing to avoid retaining discarded child refs.
-	oldValues := map[string]string{}
+	// Any current ref value is a valid stop, even if the ref moves after
+	// this lookup. Resolve names with for-each-ref: if a ref is missing,
+	// rev-list can interpret its name as git describe output and resolve
+	// it to an object supplied by this push.
+	//
+	// for-each-ref treats names as patterns. Reject globs and shallow
+	// prefixes, require exact matches, and stream directory-prefix listings
+	// to avoid retaining discarded child refs.
+	refnames := map[string]bool{}
 	for _, c := range commands {
-		if c.oldOID != nullSHA1OID && c.oldOID != nullSHA256OID &&
-			strings.HasPrefix(c.refname, "refs/") && strings.Count(c.refname, "/") >= 2 &&
+		if strings.HasPrefix(c.refname, "refs/") && strings.Count(c.refname, "/") >= 2 &&
 			!strings.HasSuffix(c.refname, "/") && !strings.ContainsAny(c.refname, "*?[\\") {
-			oldValues[c.refname] = c.oldOID
+			refnames[c.refname] = true
 		}
 	}
-	if len(oldValues) > 0 {
+	if len(refnames) > 0 {
 		var patterns strings.Builder
-		for refname := range oldValues {
+		for refname := range refnames {
 			patterns.WriteString(refname + "\n")
 		}
 		cmd := exec.CommandContext(ctx, "git", "for-each-ref", "--stdin", "--format=%(objectname) %(refname)")
@@ -1060,7 +1063,7 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 			scanner := bufio.NewScanner(stdout)
 			for scanner.Scan() {
 				oid, refname, ok := strings.Cut(scanner.Text(), " ")
-				if ok && oldValues[refname] == oid {
+				if ok && refnames[refname] {
 					matches = append(matches, oid)
 				}
 			}
@@ -1079,7 +1082,8 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 	// Each stop costs rev-list a commit lookup, so use only the parent's
 	// default branch. Read its value from network.git, whose objects the fork's
 	// alternates reach; the parent's own repository can contain objects that
-	// have not reached network.git.
+	// have not reached network.git. Resolve this ref literally too, without
+	// revision parsing.
 	if parent := sockstat.GetUint32("parent_repo_id"); parent != 0 {
 		if network, err := r.networkRepoPath(); err == nil {
 			parentRepo := filepath.Join(filepath.Dir(network), fmt.Sprintf("%d.git", parent))
@@ -1088,7 +1092,7 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 				if branch, ok := strings.CutPrefix(strings.TrimSuffix(string(out), "\n"), "refs/heads/"); ok {
 					ref := fmt.Sprintf("refs/remotes/%d/heads/%s", parent, branch)
 					cmd := exec.CommandContext(ctx, "git", fmt.Sprintf("--git-dir=%s", network),
-						"rev-parse", "--verify", "--quiet", "--end-of-options", ref)
+						"show-ref", "--verify", "--hash", ref)
 					if out, err := cmd.Output(); err == nil {
 						add(strings.TrimSpace(string(out)))
 					}

@@ -486,16 +486,16 @@ func TestConnectivityStopperOIDs(t *testing.T) {
 		assert.Empty(t, r.connectivityStopperOIDs(context.Background(), commands))
 	})
 
-	t.Run("flag on adds matching old values", func(t *testing.T) {
+	t.Run("flag on adds the current values of refs being updated", func(t *testing.T) {
 		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
 		t.Setenv(sockstat.Prefix+"parent_repo_id", "")
-		assert.Equal(t, []string{c["topic"]}, r.connectivityStopperOIDs(context.Background(), commands))
+		assert.Equal(t, []string{c["base"], c["topic"]}, r.connectivityStopperOIDs(context.Background(), commands))
 	})
 
 	t.Run("flag on adds a fork parent's default branch", func(t *testing.T) {
 		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
 		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
-		assert.Equal(t, []string{c["topic"], c["main"]}, r.connectivityStopperOIDs(context.Background(), commands))
+		assert.Equal(t, []string{c["base"], c["topic"], c["main"]}, r.connectivityStopperOIDs(context.Background(), commands))
 	})
 
 	t.Run("a directory's refs don't match its name", func(t *testing.T) {
@@ -512,7 +512,14 @@ func TestConnectivityStopperOIDs(t *testing.T) {
 		branch := "main\u00a0"
 		runGit(t, "", "--git-dir="+filepath.Join(filepath.Dir(n.fork), "100.git"), "symbolic-ref", "HEAD", "refs/heads/"+branch)
 		runGit(t, "", "--git-dir="+n.network, "update-ref", "refs/remotes/100/heads/"+branch, c["second"])
-		assert.Equal(t, []string{c["topic"], c["second"]}, r.connectivityStopperOIDs(context.Background(), commands))
+		assert.Equal(t, []string{c["base"], c["topic"], c["second"]}, r.connectivityStopperOIDs(context.Background(), commands))
+	})
+
+	t.Run("a missing default branch adds nothing, even if its name parses as an object", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
+		runGit(t, "", "--git-dir="+filepath.Join(filepath.Dir(n.fork), "100.git"), "symbolic-ref", "HEAD", "refs/heads/x-g"+c["nested"][:12])
+		assert.Equal(t, []string{c["base"], c["topic"]}, r.connectivityStopperOIDs(context.Background(), commands))
 	})
 }
 
@@ -552,4 +559,12 @@ func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
 	assert.Error(t, r.performCheckConnectivity(context.Background(), []command{
 		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: disconnected},
 	}))
+	// Client-chosen names must not make the pushed object its own stop, eg.
+	// a name rev-list would read as git describe output for it.
+	for _, name := range []string{disconnected, "refs/heads/x-g" + disconnected[:12]} {
+		assert.Error(t, r.performCheckConnectivity(context.Background(), []command{
+			{refname: "refs/heads/victim", oldOID: nullSHA1OID, newOID: disconnected},
+			{refname: name, oldOID: c["topic"], newOID: nullSHA1OID},
+		}), name)
+	}
 }
