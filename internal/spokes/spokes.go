@@ -1029,9 +1029,9 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 	}
 
 	// Use old values only when the refs still have them, preserving the
-	// connected-ref assumption. Since for-each-ref treats names as patterns,
-	// filter out broad queries; directory prefixes can still list a subtree
-	// before the exact-name check below.
+	// connected-ref assumption. for-each-ref treats names as patterns;
+	// reject globs and shallow prefixes, and stream any directory-prefix
+	// listing to avoid retaining discarded child refs.
 	oldValues := map[string]string{}
 	for _, c := range commands {
 		if c.oldOID != nullSHA1OID && c.oldOID != nullSHA256OID &&
@@ -1047,10 +1047,21 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 		}
 		cmd := exec.CommandContext(ctx, "git", "for-each-ref", "--stdin", "--format=%(objectname) %(refname)")
 		cmd.Stdin = strings.NewReader(patterns.String())
-		if out, err := cmd.Output(); err == nil {
-			for _, line := range strings.Split(string(out), "\n") {
-				oid, refname, ok := strings.Cut(line, " ")
+		if stdout, err := cmd.StdoutPipe(); err == nil && cmd.Start() == nil {
+			var matches []string
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				oid, refname, ok := strings.Cut(scanner.Text(), " ")
 				if ok && oldValues[refname] == oid {
+					matches = append(matches, oid)
+				}
+			}
+			scanErr := scanner.Err()
+			// Drain before waiting: if scanning stopped early, for-each-ref may
+			// still be blocked writing to stdout.
+			_, _ = io.Copy(io.Discard, stdout)
+			if waitErr := cmd.Wait(); scanErr == nil && waitErr == nil {
+				for _, oid := range matches {
 					add(oid)
 				}
 			}

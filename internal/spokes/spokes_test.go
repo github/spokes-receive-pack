@@ -497,6 +497,14 @@ func TestConnectivityStopperOIDs(t *testing.T) {
 		t.Setenv(sockstat.Prefix+"parent_repo_id", "uint:100")
 		assert.Equal(t, []string{c["topic"], c["main"]}, r.connectivityStopperOIDs(context.Background(), commands))
 	})
+
+	t.Run("a directory's refs don't match its name", func(t *testing.T) {
+		t.Setenv(sockstat.Prefix+"spokes_receive_pack_narrow_connectivity_stopper", "bool:true")
+		t.Setenv(sockstat.Prefix+"parent_repo_id", "")
+		// for-each-ref lists refs/heads/user/topic for the pattern refs/heads/user.
+		dir := []command{{refname: "refs/heads/user", oldOID: c["topic"], newOID: c["main"]}}
+		assert.Empty(t, r.connectivityStopperOIDs(context.Background(), dir))
+	})
 }
 
 func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
