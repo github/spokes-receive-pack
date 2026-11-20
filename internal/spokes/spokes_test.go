@@ -525,6 +525,11 @@ func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
 		{refname: "refs/heads/new", oldOID: nullSHA1OID, newOID: onMain},
 		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: onTopic},
 	}))
+	// A rename: the deleted ref's old value is the only stop near the new tip.
+	require.NoError(t, r.performCheckConnectivity(context.Background(), []command{
+		{refname: "refs/heads/user/renamed", oldOID: nullSHA1OID, newOID: onTopic},
+		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: nullSHA1OID},
+	}))
 
 	tree := runGit(t, "", "rev-parse", c["main"]+"^{tree}")
 	missingParent := "1234567890123456789012345678901234567890"

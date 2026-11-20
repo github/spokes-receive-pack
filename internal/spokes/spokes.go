@@ -955,7 +955,15 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--not",
 	}
 	args = append(args, r.connectivityStopperArgs(ctx)...)
-	stoppers := r.connectivityStopperOIDs(ctx, nonRejectedCommands)
+	// Deleted refs still exist during the check, so their old values are
+	// stops too (eg. a push that renames a branch).
+	var accepted []command
+	for _, c := range commands {
+		if c.err == "" {
+			accepted = append(accepted, c)
+		}
+	}
+	stoppers := r.connectivityStopperOIDs(ctx, accepted)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = devNull
