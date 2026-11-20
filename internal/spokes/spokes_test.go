@@ -317,14 +317,7 @@ func TestPerformCheckConnectivitySkipsDeletesAndRejected(t *testing.T) {
 	dir := t.TempDir()
 	run := func(stdin string, args ...string) string {
 		t.Helper()
-		cmd := exec.Command("git", append([]string{"--git-dir=" + dir}, args...)...)
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=a", "GIT_AUTHOR_EMAIL=a@example.com",
-			"GIT_COMMITTER_NAME=a", "GIT_COMMITTER_EMAIL=a@example.com")
-		cmd.Stdin = strings.NewReader(stdin)
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "git %v: %s", args, out)
-		return string(bytes.TrimSpace(out))
+		return runGitInput(t, "", nil, stdin, append([]string{"--git-dir=" + dir}, args...)...)
 	}
 	run("", "init", "--bare")
 	tree := run("", "mktree")
@@ -429,11 +422,7 @@ func newStopperNetwork(t *testing.T) *stopperNetwork {
 			fmt.Fprintf(&body, "parent %s\n", p)
 		}
 		fmt.Fprintf(&body, "author a <a@example.com> 0 +0000\ncommitter a <a@example.com> 0 +0000\n\n%s\n", name)
-		cmd := exec.Command("git", "--git-dir="+gitDir, "hash-object", "-t", "commit", "-w", "--stdin")
-		cmd.Stdin = strings.NewReader(body.String())
-		out, err := cmd.Output()
-		require.NoError(t, err, "hash-object %s", name)
-		n.commits[name] = string(bytes.TrimSpace(out))
+		n.commits[name] = runGitInput(t, "", nil, body.String(), "--git-dir="+gitDir, "hash-object", "-t", "commit", "-w", "--stdin")
 		runGit(t, "", "--git-dir="+gitDir, "update-ref", ref, n.commits[name])
 	}
 	missing := "1234567890123456789012345678901234567890"
@@ -459,12 +448,18 @@ func runGit(t *testing.T, dir string, args ...string) string {
 
 func runGitEnv(t *testing.T, dir string, env []string, args ...string) string {
 	t.Helper()
+	return runGitInput(t, dir, env, "", args...)
+}
+
+func runGitInput(t *testing.T, dir string, env []string, stdin string, args ...string) string {
+	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=a", "GIT_AUTHOR_EMAIL=a@example.com",
 		"GIT_COMMITTER_NAME=a", "GIT_COMMITTER_EMAIL=a@example.com")
 	cmd.Env = append(cmd.Env, env...)
+	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 	return string(bytes.TrimSpace(out))
@@ -541,7 +536,7 @@ func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
 		{refname: "refs/heads/new", oldOID: nullSHA1OID, newOID: onMain},
 		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: onTopic},
 	}))
-	// A rename: the deleted ref's old value is the only stop near the new tip.
+	// A rename: the deleted ref's current value is the only stop near the new tip.
 	require.NoError(t, r.performCheckConnectivity(context.Background(), []command{
 		{refname: "refs/heads/user/renamed", oldOID: nullSHA1OID, newOID: onTopic},
 		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: nullSHA1OID},
@@ -550,12 +545,7 @@ func TestPerformCheckConnectivityWithStoppers(t *testing.T) {
 	tree := runGit(t, "", "rev-parse", c["main"]+"^{tree}")
 	missingParent := "1234567890123456789012345678901234567890"
 	disconnectedCommit := fmt.Sprintf("tree %s\nparent %s\nauthor a <a@example.com> 0 +0000\ncommitter a <a@example.com> 0 +0000\n\ndisconnected\n", tree, missingParent)
-	cmd := exec.Command("git", "hash-object", "-t", "commit", "-w", "--stdin")
-	cmd.Env = append(os.Environ(), pushEnv...)
-	cmd.Stdin = bytes.NewBufferString(disconnectedCommit)
-	out, err := cmd.Output()
-	require.NoError(t, err)
-	disconnected := string(bytes.TrimSpace(out))
+	disconnected := runGitInput(t, "", pushEnv, disconnectedCommit, "hash-object", "-t", "commit", "-w", "--stdin")
 	assert.Error(t, r.performCheckConnectivity(context.Background(), []command{
 		{refname: "refs/heads/user/topic", oldOID: c["topic"], newOID: disconnected},
 	}))

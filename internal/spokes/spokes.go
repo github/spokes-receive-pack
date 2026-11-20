@@ -1079,7 +1079,7 @@ func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, command
 		}
 	}
 
-	// Each stop costs rev-list a commit lookup, so use only the parent's
+	// Traversing a stop's history also costs work, so use only the parent's
 	// default branch. Read its value from network.git, whose objects the fork's
 	// alternates reach; the parent's own repository can contain objects that
 	// have not reached network.git. Resolve this ref literally too, without
