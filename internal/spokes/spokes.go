@@ -955,6 +955,15 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		"--not",
 	}
 	args = append(args, r.connectivityStopperArgs(ctx)...)
+	// Deleted refs still exist during the check, so their values are stops
+	// too (eg. a push that renames a branch).
+	var accepted []command
+	for _, c := range commands {
+		if c.err == "" {
+			accepted = append(accepted, c)
+		}
+	}
+	stoppers := r.connectivityStopperOIDs(ctx, accepted)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stderr = devNull
@@ -968,8 +977,13 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 			func(ctx context.Context, _ pipe.Env, input io.Reader, output io.Writer) error {
 				w := bufio.NewWriter(output)
 
-				for _, c := range commands {
+				for _, c := range nonRejectedCommands {
 					if _, err := fmt.Fprintln(w, c.newOID); err != nil {
+						return fmt.Errorf("writing to 'rev-list' input: %w", err)
+					}
+				}
+				for _, oid := range stoppers {
+					if _, err := fmt.Fprintf(w, "^%s\n", oid); err != nil {
 						return fmt.Errorf("writing to 'rev-list' input: %w", err)
 					}
 				}
@@ -1003,6 +1017,91 @@ func (r *spokesReceivePack) connectivityStopperArgs(ctx context.Context) []strin
 		args = append(args, "HEAD")
 	}
 	return args
+}
+
+// connectivityStopperOIDs adds existing refs near the pushed tips to the narrow
+// check's stop set. As in connectivityStopperArgs, their histories are assumed
+// connected; a failed lookup only omits a stop and leaves more history to check.
+func (r *spokesReceivePack) connectivityStopperOIDs(ctx context.Context, commands []command) []string {
+	if !sockstat.GetBool("spokes_receive_pack_narrow_connectivity_stopper") {
+		return nil
+	}
+
+	var stoppers []string
+	seen := map[string]bool{}
+	add := func(oid string) {
+		if !seen[oid] {
+			seen[oid] = true
+			stoppers = append(stoppers, oid)
+		}
+	}
+
+	// Any current ref value is a valid stop, even if the ref moves after
+	// this lookup. Resolve names with for-each-ref: if a ref is missing,
+	// rev-list can interpret its name as git describe output and resolve
+	// it to an object supplied by this push.
+	//
+	// for-each-ref treats names as patterns. Reject globs and shallow
+	// prefixes, require exact matches, and stream directory-prefix listings
+	// to avoid retaining discarded child refs.
+	refnames := map[string]bool{}
+	for _, c := range commands {
+		if strings.HasPrefix(c.refname, "refs/") && strings.Count(c.refname, "/") >= 2 &&
+			!strings.HasSuffix(c.refname, "/") && !strings.ContainsAny(c.refname, "*?[\\") {
+			refnames[c.refname] = true
+		}
+	}
+	if len(refnames) > 0 {
+		var patterns strings.Builder
+		for refname := range refnames {
+			patterns.WriteString(refname + "\n")
+		}
+		cmd := exec.CommandContext(ctx, "git", "for-each-ref", "--stdin", "--format=%(objectname) %(refname)")
+		cmd.Stdin = strings.NewReader(patterns.String())
+		if stdout, err := cmd.StdoutPipe(); err == nil && cmd.Start() == nil {
+			var matches []string
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				oid, refname, ok := strings.Cut(scanner.Text(), " ")
+				if ok && refnames[refname] {
+					matches = append(matches, oid)
+				}
+			}
+			scanErr := scanner.Err()
+			// Drain before waiting: if scanning stopped early, for-each-ref may
+			// still be blocked writing to stdout.
+			_, _ = io.Copy(io.Discard, stdout)
+			if waitErr := cmd.Wait(); scanErr == nil && waitErr == nil {
+				for _, oid := range matches {
+					add(oid)
+				}
+			}
+		}
+	}
+
+	// Traversing a stop's history also costs work, so use only the parent's
+	// default branch. Read its value from network.git, whose objects the fork's
+	// alternates reach; the parent's own repository can contain objects that
+	// have not reached network.git. Resolve this ref literally too, without
+	// revision parsing.
+	if parent := sockstat.GetUint32("parent_repo_id"); parent != 0 {
+		if network, err := r.networkRepoPath(); err == nil {
+			parentRepo := filepath.Join(filepath.Dir(network), fmt.Sprintf("%d.git", parent))
+			cmd := exec.CommandContext(ctx, "git", fmt.Sprintf("--git-dir=%s", parentRepo), "symbolic-ref", "--quiet", "HEAD")
+			if out, err := cmd.Output(); err == nil {
+				if branch, ok := strings.CutPrefix(strings.TrimSuffix(string(out), "\n"), "refs/heads/"); ok {
+					ref := fmt.Sprintf("refs/remotes/%d/heads/%s", parent, branch)
+					cmd := exec.CommandContext(ctx, "git", fmt.Sprintf("--git-dir=%s", network),
+						"show-ref", "--verify", "--hash", ref)
+					if out, err := cmd.Output(); err == nil {
+						add(strings.TrimSpace(string(out)))
+					}
+				}
+			}
+		}
+	}
+
+	return stoppers
 }
 
 // headResolves reports whether `git rev-parse --verify --quiet HEAD`
