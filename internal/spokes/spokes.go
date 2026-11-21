@@ -947,14 +947,6 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 		_ = devNull.Close()
 	}()
 
-	args := []string{
-		"rev-list",
-		"--objects",
-		"--no-object-names",
-		"--stdin",
-		"--not",
-	}
-	args = append(args, r.connectivityStopperArgs(ctx)...)
 	// Deleted refs still exist during the check, so their values are stops
 	// too (eg. a push that renames a branch).
 	var accepted []command
@@ -965,7 +957,7 @@ func (r *spokesReceivePack) performCheckConnectivity(ctx context.Context, comman
 	}
 	stoppers := r.connectivityStopperOIDs(ctx, accepted)
 
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", r.connectivityCheckArgs(ctx)...)
 	cmd.Stderr = devNull
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, r.getAlternateObjectDirsEnv()...)
@@ -1017,6 +1009,18 @@ func (r *spokesReceivePack) connectivityStopperArgs(ctx context.Context) []strin
 		args = append(args, "HEAD")
 	}
 	return args
+}
+
+func (r *spokesReceivePack) connectivityCheckArgs(ctx context.Context) []string {
+	var args []string
+	// Even a short history walk can spend most of its time marking large
+	// boundary trees. Sparse marking skips unchanged subtrees; older git
+	// versions ignore the config key.
+	if sockstat.GetBool("spokes_receive_pack_narrow_connectivity_stopper") {
+		args = append(args, "-c", "revList.sparseEdges=true")
+	}
+	args = append(args, "rev-list", "--objects", "--no-object-names", "--stdin", "--not")
+	return append(args, r.connectivityStopperArgs(ctx)...)
 }
 
 // connectivityStopperOIDs adds existing refs near the pushed tips to the narrow
